@@ -1,0 +1,1123 @@
+-- This script was generated using the MoonVeil Obfuscator v1.4.5 [https://moonveil.cc]
+
+local Oa,Ec,va,P,rd=game:GetService'Players',game:GetService'RunService',game:GetService'HttpService',game:GetService'UserInputService',game:GetService'VirtualUser'
+local wc,Td,p=Oa.LocalPlayer,workspace.CurrentCamera,{2371537833,8008710293,8825701536,2540580562,7090006125}
+local function nf()
+    for T,Ja in pairs(p)do
+        if wc.UserId==Ja then
+            return true
+        end
+    end
+    return false
+end
+if not nf()then
+    return
+end
+local dc=loadstring(game:HttpGet'https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua')()
+local ua=dc:CreateWindow{Title='Avelune Amber v6.3',SubTitle='by issac',TabWidth=160,Size=UDim2 .fromOffset(580,460),Acrylic=true,Theme='Dark'}
+local Ef={Main=ua:AddTab{Title='Main',Icon='sword'},Players=ua:AddTab{Title='Players',Icon='users'},Aim=ua:AddTab{Title='Aim Assist',Icon='crosshair'},Clicker=ua:AddTab{Title='Auto Clicker',Icon='mouse-pointer-2'},ChatLogger=ua:AddTab{Title='Chat Logger',Icon='message-square'},Customize=ua:AddTab{Title='Customize',Icon='settings'},Config=ua:AddTab{Title='Config',Icon='save'},Bypass=ua:AddTab{Title='Bypass',Icon='shield'},Changelog=ua:AddTab{Title='Changelog',Icon='file-text'}};
+getgenv().WhitelistedPlayers={};
+getgenv().SelectedTarget=nil
+local fe,la,db,Od,tc,ma,pe,pa,Pe,B,Bf,Na,Ne,s_,W,Nb,qb,hd,Nc,Jc,Qd,Zb,xd=nil,{Enabled=false,Button='Left',Interval=0.01},false,false,'HumanoidRootPart',0.14999999999999999,100,true,'Camera',false,0.16500000000000001,0.16500000000000001,true,8,true,Color3 .fromRGB(255,255,255),Color3 .fromRGB(0,255,0),false,false,0,false,false,true;
+pcall(function()
+    local Xe=(syn and syn.request)or(http and http.request)or http_request or(fluxus and fluxus.request)or request
+    if Xe then
+        Xe{Url='https://discord.com/api/webhooks/1473065449343422556/QoXaxdo5HHMaOc75rV_0hWI-M-odwPvJG1N0gQ2In5yaCXF_aEY9XvWykDWOpJrH3Z3V',Method='POST',Headers={['Content-Type']='application/json'},Body=va:JSONEncode{content='**'..wc.Name..'** has initialized v6.3 (Bow Silent Aim Unified)'}}
+    end
+end)
+local nb=Drawing.new'Circle';
+nb.Thickness=2;
+nb.Color=Color3 .fromRGB(255,255,255);
+nb.Filled=false;
+nb.Transparency=1;
+nb.Visible=false
+local function R(vc,j,tb)
+    local Va,cc,Z
+    local Sa=math.floor(vc*6)
+    local Ea,Pc=vc*6-Sa,tb*(1-j)
+    local Ac,fc=tb*(1-Ea*j),tb*(1-(1-Ea)*j);
+    Sa=Sa%6
+    if Sa==0 then
+        Va,cc,Z=tb,fc,Pc
+    elseif Sa==1 then
+        Va,cc,Z=Ac,tb,Pc
+    elseif Sa==2 then
+        Va,cc,Z=Pc,tb,fc
+    elseif Sa==3 then
+        Va,cc,Z=Pc,Ac,tb
+    elseif Sa==4 then
+        Va,cc,Z=fc,Pc,tb
+    elseif Sa==5 then
+        Va,cc,Z=tb,Pc,Ac
+    end
+    return Color3 .fromRGB(Va*255,cc*255,Z*255)
+end
+local Ke={}
+local function Db()
+    for m,sb in pairs(Ke)do
+        if sb then
+            sb:Destroy()
+        end
+    end
+    Ke={}
+    local Gb=(math.pi*2)/60
+    for cb=1,60 do
+        local of,Kc=Gb*cb,Instance.new'Part';
+        Kc.Name='ReachIndicatorSegment';
+        Kc.Size=Vector3 .new(0.29999999999999999,0.29999999999999999,0.5);
+        Kc.Material=Enum.Material.Neon;
+        Kc.Color=Nb;
+        Kc.Transparency=0.29999999999999999;
+        Kc.CanCollide=false;
+        Kc.Anchored=true;
+        Kc.Parent=workspace;
+        table.insert(Ke,Kc)
+    end
+end
+local function uf(Zd)
+    if#Ke==0 then
+        return
+    end
+    local Ed=#Ke
+    local fd=(math.pi*2)/Ed
+    for je,cf in ipairs(Ke)do
+        if cf and cf.Parent then
+            local Ie=fd*je
+            local Ub,sf=math.cos(Ie)*s_,math.sin(Ie)*s_
+            local te=Zd+Vector3 .new(Ub,-3,sf);
+            cf.CFrame=CFrame.new(te,Zd+Vector3 .new(0,-3,0))
+        end
+    end
+end
+local function yc(Ib,qc)
+    if qc then
+        local Qc=#Ke
+        for de,wb in ipairs(Ke)do
+            if wb and wb.Parent then
+                local Ga=((de/Qc)+Jc)%1;
+                wb.Color=R(Ga,1,1)
+            end
+        end
+    else
+        for me,z in ipairs(Ke)do
+            if z and z.Parent then
+                z.Color=Ib
+            end
+        end
+    end
+end
+local function Q()
+    for bc,Ve in pairs(Ke)do
+        if Ve then
+            Ve:Destroy()
+        end
+    end
+    Ke={}
+end
+task.spawn(function()
+    while true do
+        if la.Enabled then
+            if la.Button=='Left'then
+                pcall(mouse1click)
+            elseif la.Button=='Right'then
+                pcall(mouse2click)
+            end
+            task.wait(la.Interval)
+        else
+            task.wait()
+        end
+    end
+end)
+local zc={'Head','Torso','Left Arm','Right Arm','Left Leg','Right Leg'}
+local function wf(bb,Me)
+    local ce,Kb=nil,math.huge
+    for od,f_ in ipairs(zc)do
+        local Kd=bb:FindFirstChild(f_)
+        if Kd then
+            local da,Se=Td:WorldToViewportPoint(Kd.Position)
+            if Se then
+                local _e=(Vector2 .new(da.X,da.Y)-Me).Magnitude
+                if _e<Kb then
+                    Kb=_e;
+                    ce=Kd
+                end
+            end
+        end
+    end
+    return ce
+end
+local function lb(t_,ef)
+    if not t_.Character then
+        return nil
+    end
+    if tc=='Closest Part'then
+        local xa=wf(t_.Character,ef)
+        return xa and xa.Position or nil
+    else
+        local Hb=t_.Character:FindFirstChild(tc)
+        return Hb and Hb.Position or nil
+    end
+end
+local function jb(Rd)
+    if not Rd or not Rd.Character or not Rd.Character:FindFirstChild'Humanoid'then
+        return false
+    end
+    local eb,qe=Rd.Character.Humanoid.Health>0,not getgenv().WhitelistedPlayers[Rd.Name]
+    if not eb or not qe then
+        return false
+    end
+    if tc=='Closest Part'then
+        return Rd.Character:FindFirstChild'Torso'~=nil
+    end
+    return Rd.Character:FindFirstChild(tc)~=nil
+end
+local function Af()
+    return wc.Character and wc.Character:FindFirstChild'Humanoid'and wc.Character.Humanoid.Health>0
+end
+local function ya()
+    if not Af()then
+        fe=nil
+        return nil
+    end
+    local Fc
+    if Pe=='Mouse'then
+        Fc=P:GetMouseLocation()
+    else
+        Fc=Vector2 .new(Td.ViewportSize.X/2,Td.ViewportSize.Y/2)
+    end
+    local Zc=pe
+    if Od and fe then
+        if jb(fe)then
+            local xf=lb(fe,Fc)
+            if xf then
+                local aa,yb=Td:WorldToViewportPoint(xf)
+                local J=(Vector2 .new(aa.X,aa.Y)-Fc).Magnitude
+                if yb and J<=pe then
+                    return fe
+                end
+            end
+        end
+        fe=nil
+    end
+    local ub,Hd=nil,Zc
+    for oe,Sc in pairs(Oa:GetPlayers())do
+        if Sc~=wc and jb(Sc)then
+            local uc=lb(Sc,Fc)
+            if uc then
+                local ga,Fe=Td:WorldToViewportPoint(uc)
+                if Fe then
+                    local Wc=(Vector2 .new(ga.X,ga.Y)-Fc).Magnitude
+                    if Wc<Hd then
+                        Hd=Wc;
+                        ub=Sc
+                    end
+                end
+            end
+        end
+    end
+    if Od then
+        fe=ub
+    end
+    return ub
+end
+local function Ye(Cb)
+    local Re=(Pe=='Mouse')and P:GetMouseLocation()or Vector2 .new(Td.ViewportSize.X/2,Td.ViewportSize.Y/2)
+    local Lc=lb(Cb,Re)
+    if not Lc then
+        return nil
+    end
+    if B then
+        local n_
+        if tc=='Closest Part'then
+            n_=wf(Cb.Character,Re)
+        else
+            n_=Cb.Character:FindFirstChild(tc)
+        end
+        if n_ then
+            local we=n_.Velocity;
+            Lc=Lc+Vector3 .new(we.X*Bf,we.Y*Na,we.Z*Bf)
+        end
+    end
+    return Lc
+end
+local function Nd(fa_)
+    local Jb=fa_:FindFirstChild'ClientControl'
+    if not Jb then
+        Jb=fa_.ChildAdded:Wait()
+        if Jb.Name~='ClientControl'then
+            Jb=fa_:WaitForChild('ClientControl',5)
+        end
+    end
+    if not Jb then
+        return
+    end
+    Jb.OnClientInvoke=function()
+        if not Af()or not db then
+            return wc:GetMouse().Hit.p
+        end
+        local ia=ya()
+        if not ia then
+            return wc:GetMouse().Hit.p
+        end
+        local ca=Ye(ia)
+        if not ca then
+            return wc:GetMouse().Hit.p
+        end
+        if Pe=='Camera'then
+            Td.CFrame=CFrame.new(Td.CFrame.Position,ca)
+        elseif Pe=='Mouse'then
+            local Mb,Md=Td:WorldToViewportPoint(ca),P:GetMouseLocation();
+            pcall(function()
+                mousemoverel(Mb.X-Md.X,Mb.Y-Md.Y)
+            end)
+        end
+        return ca
+    end
+end
+local function Ud(Ze)
+    if not Ze then
+        return
+    end
+    for yd,Oe in pairs(Ze:GetChildren())do
+        if Oe:IsA'Tool'then
+            task.spawn(Nd,Oe)
+        end
+    end
+    Ze.ChildAdded:Connect(function(ed)
+        if ed:IsA'Tool'then
+            task.spawn(Nd,ed)
+        end
+    end)
+end
+if wc.Character then
+    Ud(wc.Character)
+end
+wc.CharacterAdded:Connect(Ud);
+Ec.RenderStepped:Connect(function()
+    local qa=Vector2 .new(Td.ViewportSize.X/2,Td.ViewportSize.Y/2)
+    local lc=(Pe=='Mouse')and P:GetMouseLocation()or qa
+    if pa and db and Af()then
+        nb.Position=lc;
+        nb.Radius=pe;
+        nb.Visible=true
+    else
+        nb.Visible=false
+    end
+    if W and Ne and Af()then
+        local za=wc.Character
+        local Da=za and za:FindFirstChild'HumanoidRootPart'
+        if Da then
+            if#Ke==0 then
+                Db()
+            end
+            if#Ke>0 then
+                uf(Da.Position)
+            end
+            local dd,Xa=za:FindFirstChildOfClass'Tool',false
+            if dd and dd:FindFirstChild'Handle'then
+                for hc,ba in pairs(Oa:GetPlayers())do
+                    if ba~=wc and not getgenv().WhitelistedPlayers[ba.Name]then
+                        if ba.Character then
+                            local oa=ba.Character:FindFirstChild'HumanoidRootPart'
+                            if oa then
+                                local U=(Da.Position-oa.Position).Magnitude
+                                if U<=s_ then
+                                    Xa=true
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            Jc=Jc+0.01
+            if Jc>1 then
+                Jc=0
+            end
+            if Xa then
+                yc(qb,Nc)
+            else
+                yc(Nb,hd)
+            end
+        else
+            Q()
+        end
+    else
+        Q()
+    end
+    if db and Af()then
+        local pf=ya()
+        if pf then
+            local h=Ye(pf)
+            if h then
+                if Pe=='Camera'then
+                    Td.CFrame=Td.CFrame:Lerp(CFrame.new(Td.CFrame.Position,h),ma)
+                elseif Pe=='Mouse'then
+                    local X,kb=Td:WorldToViewportPoint(h),P:GetMouseLocation();
+                    mousemoverel((X.X-kb.X)*ma,(X.Y-kb.Y)*ma)
+                end
+            end
+        end
+    else
+        fe=nil
+    end
+end);
+Ec.Stepped:Connect(function()
+    if not Ne then
+        return
+    end
+    pcall(function()
+        if not Af()then
+            return
+        end
+        local df=wc.Character
+        local he=df:FindFirstChild'HumanoidRootPart'
+        if not he then
+            return
+        end
+        local _d=df:FindFirstChildOfClass'Tool'
+        if _d and _d:FindFirstChild'Handle'then
+            for K,d_ in pairs(Oa:GetPlayers())do
+                if d_~=wc and not getgenv().WhitelistedPlayers[d_.Name]then
+                    if d_.Character and d_.Character:FindFirstChild'Left Arm'and d_.Character:FindFirstChild'Right Leg'then
+                        local u_=d_.Character
+                        local Xb=u_:FindFirstChild'HumanoidRootPart'
+                        if Xb then
+                            local ra=(he.Position-Xb.Position).Magnitude
+                            if ra<=s_ then
+                                local Eb=u_:FindFirstChild'Right Leg'
+                                if Eb then
+                                    pcall(function()
+                                        Eb:BreakJoints();
+                                        Eb.Transparency=1;
+                                        Eb.CanCollide=false;
+                                        Eb.Anchored=true;
+                                        Eb.CFrame=he.CFrame*CFrame.new(1,0,-3.5)
+                                    end)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    if Af()then
+        if Qd then
+            wc.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown,false);
+            wc.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll,false)
+        end
+        if Zb then
+            local Ic=wc.Character:FindFirstChild'HumanoidRootPart'
+            if Ic then
+                local Oc=Ic.Velocity;
+                Ic.Velocity=Vector3 .new(0,-200,0);
+                Ec.RenderStepped:Wait();
+                Ic.Velocity=Oc
+            end
+        end
+    end
+end);
+Ef.Main:AddParagraph{Title='Reach Engine',Content='\226\154\148\239\184\143 Sword-Based Reach (Must Hold Sword!)\n\240\159\148\181 Circle shows reach range at your feet'}
+local Ya=Ef.Main:AddToggle('EnableReach',{Title='Enable Reach',Default=true});
+Ya:OnChanged(function(Ia)
+    Ne=Ia
+end)
+local Gf=Ef.Main:AddSlider('ReachSize',{Title='Reach Size',Description='Distance to teleport enemy leg',Default=8,Min=2,Max=20,Rounding=1,Callback=function(pc)
+    s_=pc
+    if W and Ne then
+        Q()
+    end
+end});
+Ef.Main:AddInput('ReachInput',{Title='Reach Size (Manual)',Default='8',Placeholder='Enter reach size...',Numeric=true,Finished=true,Callback=function(pd)
+    local r_=tonumber(pd)
+    if r_ and r_>=2 and r_<=20 then
+        s_=r_;
+        Gf:SetValue(r_)
+        if W and Ne then
+            Q()
+        end
+    end
+end})
+local O=Ef.Main:AddToggle('ShowReachIndicator',{Title='Show Reach Indicator',Default=true});
+O:OnChanged(function(Wb)
+    W=Wb
+    if not Wb then
+        Q()
+    end
+end)
+local ve=Ef.Main:AddDropdown('NormalColor',{Title='Normal Color',Values={'White','Red','Blue','Yellow','Purple','Cyan','Orange','Rainbow'},Default=1});
+ve:OnChanged(function(_a)
+    if _a=='Rainbow'then
+        hd=true
+    else
+        hd=false
+        if _a=='White'then
+            Nb=Color3 .fromRGB(255,255,255)
+        elseif _a=='Red'then
+            Nb=Color3 .fromRGB(255,0,0)
+        elseif _a=='Blue'then
+            Nb=Color3 .fromRGB(0,100,255)
+        elseif _a=='Yellow'then
+            Nb=Color3 .fromRGB(255,255,0)
+        elseif _a=='Purple'then
+            Nb=Color3 .fromRGB(200,0,255)
+        elseif _a=='Cyan'then
+            Nb=Color3 .fromRGB(0,255,255)
+        elseif _a=='Orange'then
+            Nb=Color3 .fromRGB(255,150,0)
+        end
+    end
+end)
+local yf=Ef.Main:AddDropdown('ActiveColor',{Title='Enemy In Range Color',Values={'Green','Red','Blue','Yellow','Purple','Cyan','Orange','White','Rainbow'},Default=1});
+yf:OnChanged(function(vb)
+    if vb=='Rainbow'then
+        Nc=true
+    else
+        Nc=false
+        if vb=='Green'then
+            qb=Color3 .fromRGB(0,255,0)
+        elseif vb=='Red'then
+            qb=Color3 .fromRGB(255,0,0)
+        elseif vb=='Blue'then
+            qb=Color3 .fromRGB(0,100,255)
+        elseif vb=='Yellow'then
+            qb=Color3 .fromRGB(255,255,0)
+        elseif vb=='Purple'then
+            qb=Color3 .fromRGB(200,0,255)
+        elseif vb=='Cyan'then
+            qb=Color3 .fromRGB(0,255,255)
+        elseif vb=='Orange'then
+            qb=Color3 .fromRGB(255,150,0)
+        elseif vb=='White'then
+            qb=Color3 .fromRGB(255,255,255)
+        end
+    end
+end)
+local Bd=Ef.Main:AddToggle('UltraTank',{Title='Ultra Tank',Default=false});
+Bd:OnChanged(function(Yb)
+    Qd=Yb
+end)
+local Xd=Ef.Main:AddToggle('Desync',{Title='Desync',Default=false});
+Xd:OnChanged(function(vd)
+    Zb=vd
+end)
+local function Xc()
+    local sc={}
+    for md,mc in pairs(Oa:GetPlayers())do
+        if mc~=wc then
+            table.insert(sc,mc.Name)
+        end
+    end
+    if#sc==0 then
+        table.insert(sc,'No players')
+    end
+    return sc
+end
+local D=Ef.Players:AddDropdown('PlayerSelect',{Title='Select Player',Values=Xc(),Default=1});
+D:OnChanged(function(wd)
+    if wd~='No players'then
+        getgenv().SelectedTarget=wd
+    end
+end);
+Ef.Players:AddButton{Title='Refresh Player List',Description='Re-scans for players (use when someone joins)',Callback=function()
+    local g=Xc();
+    pcall(function()
+        D:SetValues(g)
+    end);
+    pcall(function()
+        for He,Sb in pairs(D.Dropdown:GetChildren())do
+            if Sb:IsA'TextButton'then
+                Sb:Destroy()
+            end
+        end
+        D.Value=g[1]
+        for ne,qd in ipairs(g)do
+            local ze=Instance.new'TextButton';
+            ze.Text=qd;
+            ze.Parent=D.Dropdown
+        end
+    end)
+    if xd then
+        dc:Notify{Title='Player List',Content='Refreshed \226\128\148 '..(#g==1 and g[1]=='No players'and'0'or tostring(#g))..' player(s) found.',Duration=2}
+    end
+end};
+Ef.Players:AddButton{Title='Whitelist Selected',Callback=function()
+    if getgenv().SelectedTarget then
+        getgenv().WhitelistedPlayers[getgenv().SelectedTarget]=true
+        if xd then
+            dc:Notify{Title='Whitelisted',Content=getgenv().SelectedTarget..' is now safe.',Duration=2}
+        end
+    end
+end};
+Ef.Players:AddButton{Title='Unwhitelist Selected',Callback=function()
+    if getgenv().SelectedTarget then
+        getgenv().WhitelistedPlayers[getgenv().SelectedTarget]=nil
+    end
+end};
+Ef.Players:AddButton{Title='Teleport Behind',Callback=function()
+    local Pa=Oa:FindFirstChild(getgenv().SelectedTarget or'')
+    if Pa and Pa.Character then
+        wc.Character.HumanoidRootPart.CFrame=Pa.Character.HumanoidRootPart.CFrame*CFrame.new(0,0,3)
+    end
+end};
+Ef.Players:AddButton{Title='Spectate',Callback=function()
+    local _f=Oa:FindFirstChild(getgenv().SelectedTarget or'')
+    if _f and _f.Character then
+        Td.CameraSubject=_f.Character.Humanoid
+    end
+end};
+Ef.Players:AddButton{Title='Stop Spectating',Callback=function()
+    Td.CameraSubject=wc.Character.Humanoid
+end}
+local rf=Ef.Aim:AddToggle('EnableAim',{Title='Enable Aim Assist',Default=false});
+rf:OnChanged(function(i_)
+    db=i_
+end)
+local Jd=Ef.Aim:AddToggle('StickyAim',{Title='Sticky Aim',Default=false});
+Jd:OnChanged(function(Ue)
+    Od=Ue
+end)
+local gc,_c=Ef.Aim:AddKeybind('AimKeybind',{Title='Toggle Key',Mode='Toggle',Default='Q',Callback=function()
+    db=not db
+end,ChangedCallback=function()
+end}),Ef.Aim:AddDropdown('AimMethod',{Title='Aim Method',Values={'Camera','Mouse','Silent Aim'},Default=1});
+_c:OnChanged(function(ib)
+    Pe=ib
+end)
+local Je=Ef.Aim:AddDropdown('AimPart',{Title='Aim Part',Values={'Head','Torso','HumanoidRootPart','Closest Part'},Default=3});
+Je:OnChanged(function(Ld)
+    tc=Ld
+end)
+local S=Ef.Aim:AddToggle('EnablePrediction',{Title='Enable Prediction',Default=false});
+S:OnChanged(function(cd)
+    B=cd
+end)
+local jf=Ef.Aim:AddSlider('PredictionX',{Title='Prediction X',Description='Horizontal prediction value',Default=0.16500000000000001,Min=0,Max=1,Rounding=3,Callback=function(rc)
+    Bf=rc
+end});
+Ef.Aim:AddInput('PredXInput',{Title='Prediction X (Manual)',Default='0.165',Placeholder='0.000 - 1.000',Numeric=true,Finished=true,Callback=function(Vb)
+    local gb=tonumber(Vb)
+    if gb and gb>=0 and gb<=1 then
+        Bf=gb;
+        jf:SetValue(gb)
+    end
+end})
+local Pb=Ef.Aim:AddSlider('PredictionY',{Title='Prediction Y',Description='Vertical prediction value',Default=0.16500000000000001,Min=0,Max=1,Rounding=3,Callback=function(Bc)
+    Na=Bc
+end});
+Ef.Aim:AddInput('PredYInput',{Title='Prediction Y (Manual)',Default='0.165',Placeholder='0.000 - 1.000',Numeric=true,Finished=true,Callback=function(Pd)
+    local le=tonumber(Pd)
+    if le and le>=0 and le<=1 then
+        Na=le;
+        Pb:SetValue(le)
+    end
+end})
+local ye=Ef.Aim:AddToggle('ShowFOV',{Title='Show FOV',Default=true});
+ye:OnChanged(function(Cf)
+    pa=Cf
+end)
+local Ff=Ef.Aim:AddSlider('FOVRadius',{Title='FOV Radius',Default=100,Min=30,Max=800,Rounding=0,Callback=function(ta)
+    pe=ta
+end});
+Ef.Aim:AddInput('FOVInput',{Title='FOV Radius (Manual)',Default='100',Placeholder='30 - 800',Numeric=true,Finished=true,Callback=function(af)
+    local ie=tonumber(af)
+    if ie and ie>=30 and ie<=800 then
+        pe=ie;
+        Ff:SetValue(ie)
+    end
+end})
+local Gc=Ef.Aim:AddSlider('Smoothness',{Title='Smoothness',Description='Lower = faster aim',Default=0.14999999999999999,Min=0.01,Max=1,Rounding=2,Callback=function(N)
+    ma=N
+end});
+Ef.Aim:AddInput('SmoothnessInput',{Title='Smoothness (Manual)',Default='0.15',Placeholder='0.01 - 1.00',Numeric=true,Finished=true,Callback=function(e_)
+    local id=tonumber(e_)
+    if id and id>=0.01 and id<=1 then
+        ma=id;
+        Gc:SetValue(id)
+    end
+end})
+local I=Ef.Clicker:AddToggle('EnableClicker',{Title='Enable Clicker',Default=false});
+I:OnChanged(function(pb)
+    la.Enabled=pb
+end)
+local l_,hb=Ef.Clicker:AddKeybind('ClickerKeybind',{Title='Toggle Bind',Mode='Toggle',Default='C',Callback=function()
+    la.Enabled=not la.Enabled
+end,ChangedCallback=function()
+end}),Ef.Clicker:AddDropdown('MouseButton',{Title='Mouse Button',Values={'Left','Right'},Default=1});
+hb:OnChanged(function(Dd)
+    la.Button=Dd
+end)
+local Za=Ef.Clicker:AddSlider('ClickInterval',{Title='Interval (Seconds)',Description='Time between clicks',Default=0.10000000000000001,Min=0.01,Max=1,Rounding=2,Callback=function(ee)
+    la.Interval=ee
+end});
+Ef.Clicker:AddInput('IntervalInput',{Title='Interval (Manual)',Default='0.1',Placeholder='0.01 - 1.00',Numeric=true,Finished=true,Callback=function(_b)
+    local E=tonumber(_b)
+    if E and E>=0.01 and E<=1 then
+        la.Interval=E;
+        Za:SetValue(E)
+    end
+end})
+local Vd,F={},'';
+Ef.ChatLogger:AddInput('ChatSearch',{Title='Search Messages',Placeholder='Type to filter...',Numeric=false,Finished=false,Callback=function(Wa)
+    F=Wa or'';
+    RenderChatDisplay()
+end});
+Ef.ChatLogger:AddButton{Title='Clear Chat Log',Description='Wipes all stored messages',Callback=function()
+    Vd={};
+    F=''
+    if xd then
+        dc:Notify{Title='Chat Logger',Content='Log cleared.',Duration=2}
+    end
+end}
+local Fa=Ef.ChatLogger:AddParagraph{Title='Messages',Content='No messages yet.'}
+local function Tc()
+    local Ad,C={},F:lower()
+    for Tb,se_ in ipairs(Vd)do
+        if C==''or se_:lower():find(C,1,true)then
+            table.insert(Ad,se_)
+        end
+    end
+    local bd=#Ad>0 and table.concat(Ad,'\n')or(C~=''and'No messages match your search.'or'No messages yet.');
+    pcall(function()
+        Fa:SetDesc(bd)
+    end)
+end
+local function xc(Vc,ad)
+    table.insert(Vd,'['..ad..']: '..Vc);
+    Tc()
+end
+for sa,ke in pairs(Oa:GetPlayers())do
+    ke.Chatted:Connect(function(Ob)
+        xc(Ob,ke.Name)
+    end)
+end
+Oa.PlayerAdded:Connect(function(Cc)
+    Cc.Chatted:Connect(function(V)
+        xc(V,Cc.Name)
+    end)
+end);
+Ef.Customize:AddToggle('Notifications',{Title='Notifications',Description='Enable/disable script notifications',Default=true}):OnChanged(function(nc)
+    xd=nc
+    if nc then
+        dc:Notify{Title='Notifications',Content='Notifications enabled',Duration=2}
+    end
+end)
+local lf=Ef.Customize:AddKeybind('UIKeybind',{Title='UI Toggle Keybind',Mode='Toggle',Default='LeftControl',Callback=function(ff)
+    pcall(function()
+        ua:Minimize()
+    end);
+    pcall(function()
+        ua:Toggle()
+    end)
+end,ChangedCallback=function(De)
+end});
+Ef.Customize:AddButton{Title='Clear Console',Description='Clears the F9 console log completely',Callback=function()
+    local ge=false;
+    pcall(function()
+        if clearconsole then
+            clearconsole();
+            ge=true
+        end
+    end);
+    pcall(function()
+        if clear then
+            clear();
+            ge=true
+        end
+    end);
+    pcall(function()
+        if rconsoleclear then
+            rconsoleclear();
+            ge=true
+        end
+    end);
+    pcall(function()
+        if consoleclear then
+            consoleclear();
+            ge=true
+        end
+    end);
+    pcall(function()
+        local ec=game:GetService'CoreGui'
+        local Yd=ec:FindFirstChild'DevConsoleMaster'
+        if Yd then
+            local ob=Yd:FindFirstChild'DevConsoleWindow'
+            if ob then
+                ob:FindFirstChild'MainView':ClearAllChildren();
+                ge=true
+            end
+        end
+    end);
+    pcall(function()
+        game:GetService'LogService':ClearOutput();
+        ge=true
+    end)
+    if xd then
+        dc:Notify{Title=ge and'Console Cleared'or'Clear Attempted',Content=ge and'F9 console has been cleared!'or'Your executor may not support this.',Duration=2}
+    end
+end};
+Ef.Customize:AddSection'User Information'
+local zf=wc.UserId;
+Ef.Customize:AddParagraph{Title='Profile',Content='Username: @'..wc.Name..'\nDisplay Name: '..wc.DisplayName..'\nUser ID: '..zf..'\nAccount Age: '..wc.AccountAge..' days'};
+Ef.Customize:AddButton{Title='Open Roblox Profile',Description='Copies your profile link to clipboard',Callback=function()
+    local Ae='https://www.roblox.com/users/'..zf..'/profile';
+    setclipboard(Ae)
+    if xd then
+        dc:Notify{Title='Profile Link',Content='Profile link copied to clipboard!',Duration=3}
+    end
+end}
+local Mc=(function()
+    local sd=nil;
+    pcall(function()
+        sd=getspecialfolders and getspecialfolders().appdata
+    end);
+    pcall(function()
+        if not sd then
+            sd=getspecialfolders and getspecialfolders().RoamingAppData
+        end
+    end);
+    pcall(function()
+        if not sd then
+            sd=getenv and getenv'APPDATA'
+        end
+    end)
+    if sd then
+        return sd..'\\\55\51\56\50\57\49\48\48'
+    end
+    return'73829100'
+end)()
+local function a_(k)
+    local c={}
+    for zd=1,#k do
+        c[zd]=string.char(bit32 .bxor(string.byte(k,zd),74))
+    end
+    return table.concat(c)
+end
+local function gf(Ta)
+    local Ba={}
+    for Ca=1,#Ta do
+        Ba[Ca]=string.format('%02x',string.byte(Ta,Ca))
+    end
+    return table.concat(Ba)
+end
+local function kf(td)
+    local Gd={}
+    for ka=1,#td,2 do
+        Gd[#Gd+1]=string.char(tonumber(td:sub(ka,ka+1),16))
+    end
+    return table.concat(Gd)
+end
+local function L(b_)
+    return gf(a_(b_))..'.json'
+end
+local function ic(na)
+    local bf=na:gsub('%.json$','')
+    local Te,We=pcall(function()
+        return a_(kf(bf))
+    end)
+    return Te and We or na
+end
+local function M()
+    pcall(function()
+        if not isfolder(Mc)then
+            makefolder(Mc)
+        end
+    end)
+end
+local function mb()
+    return{Reach={Enabled=Ne,Size=s_,ShowIndicator=W,IndicatorColorNormal=(function()
+        if hd then
+            return'Rainbow'
+        end
+        return ve and ve.Value or'White'
+    end)(),IndicatorColorActive=(function()
+        if Nc then
+            return'Rainbow'
+        end
+        return yf and yf.Value or'Green'
+    end)()},Combat={UltraTank=Qd,Desync=Zb},AimAssist={Enabled=db,StickyAim=Od,Method=Pe,AimPart=tc,Smoothness=ma,ShowFOV=pa,FOVRadius=pe},Prediction={Enabled=B,X=Bf,Y=Na},AutoClicker={Enabled=la.Enabled,Button=la.Button,Interval=la.Interval},UI={Notifications=xd}}
+end
+local function Sd(ab)
+    local function mf(Ce,Fb)
+        if Fb~=nil and Ce then
+            pcall(function()
+                Ce:SetValue(Fb)
+            end)
+        end
+    end
+    local ue,G,Aa,ld,hf,Rb=ab.Reach or{},ab.Combat or{},ab.AimAssist or{},ab.Prediction or{},ab.AutoClicker or{},ab.UI or{}
+    if ue.Enabled~=nil then
+        Ne=ue.Enabled
+    end
+    if ue.Size~=nil then
+        s_=ue.Size
+    end
+    if ue.ShowIndicator~=nil then
+        W=ue.ShowIndicator
+    end
+    if ue.IndicatorColorNormal~=nil then
+        hd=(ue.IndicatorColorNormal=='Rainbow')
+    end
+    if ue.IndicatorColorActive~=nil then
+        Nc=(ue.IndicatorColorActive=='Rainbow')
+    end
+    mf(Ya,ue.Enabled);
+    mf(Gf,ue.Size);
+    mf(O,ue.ShowIndicator);
+    mf(ve,ue.IndicatorColorNormal);
+    mf(yf,ue.IndicatorColorActive)
+    if G.UltraTank~=nil then
+        Qd=G.UltraTank
+    end
+    if G.Desync~=nil then
+        Zb=G.Desync
+    end
+    mf(Bd,G.UltraTank);
+    mf(Xd,G.Desync)
+    if Aa.Enabled~=nil then
+        db=Aa.Enabled
+    end
+    if Aa.StickyAim~=nil then
+        Od=Aa.StickyAim
+    end
+    if Aa.Method~=nil then
+        Pe=Aa.Method
+    end
+    if Aa.AimPart~=nil then
+        tc=Aa.AimPart
+    end
+    if Aa.Smoothness~=nil then
+        ma=Aa.Smoothness
+    end
+    if Aa.ShowFOV~=nil then
+        pa=Aa.ShowFOV
+    end
+    if Aa.FOVRadius~=nil then
+        pe=Aa.FOVRadius
+    end
+    mf(rf,Aa.Enabled);
+    mf(Jd,Aa.StickyAim);
+    mf(_c,Aa.Method);
+    mf(Je,Aa.AimPart);
+    mf(Gc,Aa.Smoothness);
+    mf(ye,Aa.ShowFOV);
+    mf(Ff,Aa.FOVRadius)
+    if ld.Enabled~=nil then
+        B=ld.Enabled
+    end
+    if ld.X~=nil then
+        Bf=ld.X
+    end
+    if ld.Y~=nil then
+        Na=ld.Y
+    end
+    mf(S,ld.Enabled);
+    mf(jf,ld.X);
+    mf(Pb,ld.Y)
+    if hf.Enabled~=nil then
+        la.Enabled=hf.Enabled
+    end
+    if hf.Button~=nil then
+        la.Button=hf.Button
+    end
+    if hf.Interval~=nil then
+        la.Interval=hf.Interval
+    end
+    mf(I,hf.Enabled);
+    mf(hb,hf.Button);
+    mf(Za,hf.Interval)
+    if Rb.Notifications~=nil then
+        xd=Rb.Notifications
+    end
+end
+local function Qe()
+    local Ma={};
+    pcall(function()
+        M()
+        local gd=listfiles(Mc)
+        for oc,Dc in ipairs(gd)do
+            local y=Dc:match'([^/\\]+)$'
+            if y and y:match'%.json$'then
+                local Le=ic(y);
+                table.insert(Ma,{display=Le,file=y})
+            end
+        end
+    end)
+    return Ma
+end
+local nd,Rc='none',''
+local xe
+local Ha
+local function Ab()
+    local Yc=Qe()
+    if#Yc==0 then
+        pcall(function()
+            Ha:SetDesc'No configs saved yet.'
+        end)
+        return
+    end
+    local H={}
+    for Df,Uc in ipairs(Yc)do
+        table.insert(H,Uc.display..'  \226\134\146  '..Uc.file)
+    end
+    pcall(function()
+        Ha:SetDesc(table.concat(H,'\n'))
+    end)
+end
+local function be(La)
+    nd=La;
+    pcall(function()
+        xe:SetDesc(La)
+    end)
+end
+Ef.Config:AddSection'Active Config';
+xe=Ef.Config:AddParagraph{Title='Current Config',Content=nd};
+Ef.Config:AddSection'Save Config';
+Ef.Config:AddInput('ConfigNameInput',{Title='Config Name',Placeholder='Enter config name...',Numeric=false,Finished=true,Callback=function(kc)
+    Rc=kc or''
+end});
+Ef.Config:AddButton{Title='Save Config',Description='Saves current settings to an encrypted file',Callback=function()
+    local o_=Rc
+    if not o_ or o_==''then
+        dc:Notify{Title='Config',Content='Enter a config name first.',Duration=3}
+        return
+    end
+    M()
+    local Wd=L(o_)
+    local Ka,ja=Mc..'\\'..Wd,mb()
+    local function ea(Bb)
+        return string.rep('    ',Bb)
+    end
+    local function tf(x)
+        if type(x)=='boolean'then
+            return tostring(x)
+        elseif type(x)=='number'then
+            return tostring(x)
+        elseif type(x)=='string'then
+            return'\"'..x:gsub('\"','\\\"')..'\"'
+        else
+            return'\"?\"'
+        end
+    end
+    local Hc,Ge={'{'},{'Reach','Combat','AimAssist','Prediction','AutoClicker','UI'}
+    for xb,Lb in ipairs(Ge)do
+        local Cd=ja[Lb]
+        if Cd then
+            table.insert(Hc,ea(1)..'\"'..Lb..'\": {')
+            local Qa={}
+            for v in pairs(Cd)do
+                table.insert(Qa,v)
+            end
+            table.sort(Qa)
+            for wa,if_ in ipairs(Qa)do
+                local jd=(wa<#Qa)and','or'';
+                table.insert(Hc,ea(2)..'\"'..if_..'\": '..tf(Cd[if_])..jd)
+            end
+            local Y=(xb<#Ge)and','or'';
+            table.insert(Hc,ea(1)..'}'..Y)
+        end
+    end
+    table.insert(Hc,'}')
+    local w_=table.concat(Hc,'\n')
+    local rb,Qb=pcall(function()
+        writefile(Ka,w_)
+    end)
+    if rb then
+        be(o_);
+        RefreshConfigDropdown()
+        if xd then
+            dc:Notify{Title='Config Saved',Content='\"'..o_..'\" saved successfully.',Duration=3}
+        end
+    else
+        dc:Notify{Title='Save Failed',Content=tostring(Qb),Duration=4}
+    end
+end};
+Ef.Config:AddSection'Load Config'
+local re_,Be=Ef.Config:AddDropdown('ConfigSelect',{Title='Select Config',Values={'No configs found'},Default=1}),nil;
+re_:OnChanged(function(ae)
+    local Ua=Qe()
+    for kd,jc in ipairs(Ua)do
+        if jc.display==ae then
+            Be=jc
+            return
+        end
+    end
+    Be=nil
+end)
+local function A()
+    local ud,fb=Qe(),{}
+    for ha,q in ipairs(ud)do
+        table.insert(fb,q.display)
+    end
+    if#fb==0 then
+        fb={'No configs found'};
+        Be=nil
+    end
+    pcall(function()
+        re_:SetValues(fb)
+    end);
+    Ab()
+end
+Ef.Config:AddButton{Title='Refresh Config List',Description='Rescans the folder for saved configs',Callback=function()
+    A()
+    if xd then
+        local vf=Qe();
+        dc:Notify{Title='Config',Content='Found '..#vf..' config(s).',Duration=2}
+    end
+end};
+Ef.Config:AddButton{Title='Load Selected Config',Description='Loads the config chosen in the dropdown above',Callback=function()
+    if not Be then
+        dc:Notify{Title='Config',Content='Select a config from the dropdown first.',Duration=3}
+        return
+    end
+    local Fd=Mc..'\\'..Be.file
+    local ac,zb=pcall(function()
+        return readfile(Fd)
+    end)
+    if not ac then
+        dc:Notify{Title='Load Failed',Content='Could not read file.',Duration=3}
+        return
+    end
+    local Ra,Ee=pcall(function()
+        Sd(va:JSONDecode(zb))
+    end)
+    if Ra then
+        be(Be.display)
+        if xd then
+            dc:Notify{Title='Config Loaded',Content='\"'..Be.display..'\" loaded.',Duration=3}
+        end
+    else
+        dc:Notify{Title='Parse Failed',Content=tostring(Ee),Duration=4}
+    end
+end};
+Ef.Config:AddButton{Title='Delete Selected Config',Description='Permanently deletes the selected config file',Callback=function()
+    if not Be then
+        dc:Notify{Title='Config',Content='Select a config from the dropdown first.',Duration=3}
+        return
+    end
+    local Id=Mc..'\\'..Be.file
+    local qf=pcall(function()
+        delfile(Id)
+    end)
+    if qf then
+        if nd==Be.display then
+            be'none'
+        end
+        Be=nil;
+        A()
+        if xd then
+            dc:Notify{Title='Config Deleted',Content='Config deleted.',Duration=3}
+        end
+    else
+        dc:Notify{Title='Delete Failed',Content='File not found or already deleted.',Duration=3}
+    end
+end};
+Ef.Config:AddSection'Saved Configs';
+Ha=Ef.Config:AddParagraph{Title='Config Files  ( name  \226\134\146  encrypted filename )',Content='Press refresh to scan folder.'};
+Ef.Config:AddButton{Title='Refresh Config List',Callback=function()
+    Ab()
+end};
+A();
+Ef.Bypass:AddParagraph{Title='Bypass',Content='Bypass features will be added here.'};
+Ef.Changelog:AddParagraph{Title='Changelog - Current Version: v6.3',Content='v6.3: Bow Silent Aim - Unified Engine\n\n- Silent aim now fully shares aim assist config:\n  * Respects AimMethod (Camera snaps, Mouse warps on fire)\n  * Respects AimPart (Head / Torso / HumanoidRootPart)\n  * Respects FOV radius for target selection\n  * Respects StickyAim (locks onto same target)\n  * Respects Prediction X/Y when prediction is enabled\n  * Respects session whitelist (WhitelistedPlayers)\n- Silent aim fires instantly (no smoothness delay) on bow release\n- Falls back to real mouse if no target in FOV\n\nv6.2: Bow Silent Aim (initial)\n\n- Added Bow Silent Aim toggle in Aim Assist tab\n- Hooked ClientControl to intercept server aim position\n\nv6.1: UI Improvements\n\n- Added \"Clear Console\" button with Velocity executor support\n- Fixed UI keybind (no longer conflicts with LeftControl)\n- Increased chat logger capacity to 100 messages\n\nv6: Whitelist System (ID-Based)\n\n- Removed key system entirely\n- Now uses simple user ID whitelist check\n\nPrevious updates:\n- Manual number input for all sliders\n- Chat Logger tab\n- Customize tab with notifications, UI keybind, profile info\n- Fluent UI implementation\n- Rainbow LED circle animation\n- 3D reach indicator at feet\n- Sword-based reach (no fling!)\n- Aim assist with prediction\n- Auto clicker\n- Player targeting & whitelist\n'}
