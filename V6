@@ -1,7 +1,7 @@
 -- This script was generated using the MoonVeil Obfuscator v1.4.5 [https://moonveil.cc]
 
 local Oa,Ec,va,P,rd=game:GetService'Players',game:GetService'RunService',game:GetService'HttpService',game:GetService'UserInputService',game:GetService'VirtualUser'
-local wc,Td,p=Oa.LocalPlayer,workspace.CurrentCamera,{2371537833,8008710293,8825701536,2540580562,7090006125,10318940538,10791047837}
+local wc,Td,p=Oa.LocalPlayer,workspace.CurrentCamera,{2371537833,8008710293,8825701536,2540580562,7090006125,10318940538,10791047837,1493260655}
 local function nf()
     for T,Ja in pairs(p)do
         if wc.UserId==Ja then
