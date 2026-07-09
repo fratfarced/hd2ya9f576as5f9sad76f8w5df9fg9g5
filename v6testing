@@ -1,0 +1,1119 @@
+-- [[ Avelune Amber - SWORD REACH BUILD v6.2 ]] 
+-- Potassium Compatible | Clone & Swap Reach System
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+local UserInputService = game:GetService("UserInputService")
+local VirtualUser = game:GetService("VirtualUser")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- [[ EXECUTOR DETECTION ]]
+local Executor = {
+    Name = "Unknown",
+    Type = "Unknown",
+    HasDrawing = false,
+    HasMouseClick = false,
+    HasMouseMove = false,
+    HasRequest = false,
+    HasClearConsole = false,
+    HasClipboard = false
+}
+
+-- Detect executor name
+local function getExecutorName()
+    local name = getexecutorname and getexecutorname()
+    if name then return name end
+    if syn then return "Synapse X" end
+    if http and http.request then return "Script-Ware" end
+    if fluxus then return "Fluxus" end
+    if identifyexecutor then
+        local result = identifyexecutor()
+        if result and result:match("Potassium") then return "Potassium" end
+    end
+    return "Unknown"
+end
+
+Executor.Name = getExecutorName()
+
+-- Detect executor type (Internal vs External)
+local function detectExecutorType()
+    -- Internal executors typically have Drawing and mouse APIs
+    local hasInternalApis = false
+    pcall(function()
+        local testCircle = Drawing.new("Circle")
+        if testCircle then hasInternalApis = true end
+    end)
+    
+    -- External executors (like Xeno) typically lack these
+    if Executor.Name == "Xeno" then
+        return "External"
+    elseif hasInternalApis then
+        return "Internal"
+    else
+        -- Try to detect via other means
+        pcall(function()
+            mouse1click()
+            hasInternalApis = true
+        end)
+        return hasInternalApis and "Internal" or "External"
+    end
+end
+
+Executor.Type = detectExecutorType()
+
+-- Feature detection
+pcall(function()
+    local testCircle = Drawing.new("Circle")
+    if testCircle then 
+        Executor.HasDrawing = true
+        testCircle:Destroy()
+    end
+end)
+
+pcall(function()
+    mouse1click()
+    Executor.HasMouseClick = true
+end)
+
+pcall(function()
+    mousemoverel(0, 0)
+    Executor.HasMouseMove = true
+end)
+
+pcall(function()
+    local req = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
+    if req then Executor.HasRequest = true end
+end)
+
+pcall(function()
+    rconsoleclear()
+    Executor.HasClearConsole = true
+end)
+
+pcall(function()
+    setclipboard("test")
+    Executor.HasClipboard = true
+end)
+
+print("[Avelune] Executor: " .. Executor.Name .. " (" .. Executor.Type .. ")")
+print("[Avelune] Features: Drawing=" .. tostring(Executor.HasDrawing) .. ", MouseClick=" .. tostring(Executor.HasMouseClick) .. ", MouseMove=" .. tostring(Executor.HasMouseMove))
+
+-- [[ WHITELIST DATABASE ]]
+local WhitelistedUsers = {
+    2371537833,  -- w1ssac
+    8008710293,  -- alsoIssac
+    8825701536,  -- bitcrushedsouI
+    2540580562,  -- andreasbultmann71
+    7090006125,  -- itsnoire1
+    -- Add more user IDs here
+}
+
+local function isWhitelisted()
+    for _, userId in pairs(WhitelistedUsers) do
+        if LocalPlayer.UserId == userId then
+            return true
+        end
+    end
+    return false
+end
+
+if not isWhitelisted() then
+    print("YOUR CUSTOM MESSAGE HERE")
+    return
+end
+
+print("[Avelune] User authorized, loading script...")
+
+-- Load Fluent UI
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+
+local Window = Fluent:CreateWindow({
+    Title = "Avelune Amber " .. "v6.2",
+    SubTitle = "by issac | " .. Executor.Name,
+    TabWidth = 160,
+    Size = UDim2.fromOffset(580, 460),
+    Acrylic = true,
+    Theme = "Dark"
+})
+
+local Tabs = {
+    Main = Window:AddTab({ Title = "Main", Icon = "sword" }),
+    Players = Window:AddTab({ Title = "Players", Icon = "users" }),
+    Aim = Window:AddTab({ Title = "Aim Assist", Icon = "crosshair" }),
+    Clicker = Window:AddTab({ Title = "Auto Clicker", Icon = "mouse-pointer-2" }),
+    ChatLogger = Window:AddTab({ Title = "Chat Logger", Icon = "message-square" }),
+    Customize = Window:AddTab({ Title = "Customize", Icon = "settings" }),
+    Changelog = Window:AddTab({ Title = "Changelog", Icon = "file-text" })
+}
+
+-- Configuration State
+getgenv().WhitelistedPlayers = {}
+getgenv().SelectedTarget = nil 
+local LockedTarget = nil
+
+local AutoClicker = { Enabled = false, Button = "Left", Interval = 0.01 }
+local AimAssistEnabled = false
+local StickyAim = false
+local AimPart = "HumanoidRootPart"
+local AimSmoothness = 0.15
+local FOVRadius = 100
+local ShowFOV = true
+local AimMethod = "Camera" 
+local PredictionEnabled = false
+local PredictionX = 0.165
+local PredictionY = 0.165
+local ReachEnabled = true
+local ReachSize = 8 
+local ShowReachIndicator = true
+local ReachColorNormal = Color3.fromRGB(255, 255, 255)
+local ReachColorActive = Color3.fromRGB(0, 255, 0)
+local RainbowNormal = false
+local RainbowActive = false
+local RainbowOffset = 0
+local TankActive = false
+local DesyncActive = false
+
+-- [[ CLONE & SWAP TRACKING ]]
+local SwappedLegs = {} -- Key = Player, Value = {FakeLeg, RealLeg, Swapped}
+local function clearSwappedLeg(player)
+    if SwappedLegs[player] then
+        local data = SwappedLegs[player]
+        if data.FakeLeg and data.FakeLeg.Parent then
+            data.FakeLeg:Destroy()
+        end
+        SwappedLegs[player] = nil
+    end
+end
+
+-- Handle player respawns
+local function onCharacterAdded(player, character)
+    -- Clear old swap data for this player (character is new, old legs are gone)
+    clearSwappedLeg(player)
+end
+
+-- Connect respawn handlers for existing and future players
+for _, player in pairs(Players:GetPlayers()) do
+    if player ~= LocalPlayer then
+        player.CharacterAdded:Connect(function(character)
+            onCharacterAdded(player, character)
+        end)
+    end
+end
+
+Players.PlayerAdded:Connect(function(player)
+    if player ~= LocalPlayer then
+        player.CharacterAdded:Connect(function(character)
+            onCharacterAdded(player, character)
+        end)
+    end
+end)
+
+-- Webhook
+local WebhookURL = "https://discord.com/api/webhooks/1473065449343422556/QoXaxdo5HHMaOc75rV_0hWI-M-odwPvJG1N0gQ2In5yaCXF_aEY9XvWykDWOpJrH3Z3V" 
+pcall(function()
+    local req = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
+    if req then
+        req({
+            Url = WebhookURL,
+            Method = "POST",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = HttpService:JSONEncode({
+                ["content"] = "**" .. LocalPlayer.Name .. "** has initialized v6.2 (Clone & Swap Reach)"
+            })
+        })
+    end
+end)
+
+-- Drawing API (with executor detection fallback)
+local FOVCircle = nil
+if Executor.HasDrawing then
+    pcall(function()
+        FOVCircle = Drawing.new("Circle")
+        FOVCircle.Thickness = 2
+        FOVCircle.Color = Color3.fromRGB(255, 255, 255)
+        FOVCircle.Filled = false
+        FOVCircle.Transparency = 1
+        FOVCircle.Visible = false
+    end)
+else
+    print("[Avelune] Drawing not supported - FOV circle disabled")
+    ShowFOV = false
+end
+
+local function HSVtoRGB(h, s, v)
+    local r, g, b
+    local i = math.floor(h * 6)
+    local f = h * 6 - i
+    local p = v * (1 - s)
+    local q = v * (1 - f * s)
+    local t = v * (1 - (1 - f) * s)
+    i = i % 6
+    if i == 0 then r, g, b = v, t, p
+    elseif i == 1 then r, g, b = q, v, p
+    elseif i == 2 then r, g, b = p, v, t
+    elseif i == 3 then r, g, b = p, q, v
+    elseif i == 4 then r, g, b = t, p, v
+    elseif i == 5 then r, g, b = v, p, q
+    end
+    return Color3.fromRGB(r * 255, g * 255, b * 255)
+end
+
+-- 3D Reach Circle
+local ReachCircleParts = {}
+
+local function createReachCircle()
+    for _, part in pairs(ReachCircleParts) do
+        if part then part:Destroy() end
+    end
+    ReachCircleParts = {}
+    
+    local numParts = 60
+    local angleStep = (math.pi * 2) / numParts
+    
+    for i = 1, numParts do
+        local angle = angleStep * i
+        local part = Instance.new("Part")
+        part.Name = "ReachIndicatorSegment"
+        part.Size = Vector3.new(0.3, 0.3, 0.5)
+        part.Material = Enum.Material.Neon
+        part.Color = ReachColorNormal
+        part.Transparency = 0.3
+        part.CanCollide = false
+        part.Anchored = true
+        part.Parent = workspace
+        
+        table.insert(ReachCircleParts, part)
+    end
+end
+
+local function updateReachCirclePosition(rootPosition)
+    if #ReachCircleParts == 0 then return end
+    
+    local numParts = #ReachCircleParts
+    local angleStep = (math.pi * 2) / numParts
+    
+    for i, part in ipairs(ReachCircleParts) do
+        if part and part.Parent then
+            local angle = angleStep * i
+            local x = math.cos(angle) * ReachSize
+            local z = math.sin(angle) * ReachSize
+            local segmentPos = rootPosition + Vector3.new(x, -3, z)
+            part.CFrame = CFrame.new(segmentPos, rootPosition + Vector3.new(0, -3, 0))
+        end
+    end
+end
+
+local function setReachCircleColor(color, isRainbow)
+    if isRainbow then
+        local numParts = #ReachCircleParts
+        for i, part in ipairs(ReachCircleParts) do
+            if part and part.Parent then
+                local hue = ((i / numParts) + RainbowOffset) % 1
+                part.Color = HSVtoRGB(hue, 1, 1)
+            end
+        end
+    else
+        for _, part in ipairs(ReachCircleParts) do
+            if part and part.Parent then
+                part.Color = color
+            end
+        end
+    end
+end
+
+local function destroyReachCircle()
+    for _, part in pairs(ReachCircleParts) do
+        if part then part:Destroy() end
+    end
+    ReachCircleParts = {}
+end
+
+-- Auto Clicker Thread (with executor compatibility)
+task.spawn(function()
+    while true do
+        if AutoClicker.Enabled then
+            if Executor.HasMouseClick then
+                if AutoClicker.Button == "Left" then
+                    mouse1click()
+                elseif AutoClicker.Button == "Right" then
+                    mouse2click()
+                end
+            else
+                -- Fallback: try VirtualUser
+                pcall(function()
+                    if AutoClicker.Button == "Left" then
+                        VirtualUser:CaptureController()
+                        VirtualUser:ClickButton2(Vector2.new(0, 0))
+                    end
+                end)
+            end
+            task.wait(AutoClicker.Interval)
+        else
+            task.wait()
+        end
+    end
+end)
+
+-- Helper Functions
+local function IsValid(plr)
+    if plr and plr.Character and plr.Character:FindFirstChild(AimPart) and plr.Character:FindFirstChild("Humanoid") then
+        local isAlive = plr.Character.Humanoid.Health > 0
+        local isNotWhitelisted = not getgenv().WhitelistedPlayers[plr.Name]
+        return isAlive and isNotWhitelisted
+    end
+    return false
+end
+
+local function IsLocalAlive()
+    return LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0
+end
+
+-- [[ CLONE & SWAP REACH FUNCTION ]]
+local function performCloneSwap(targetPlayer, targetHRP, humanoidRootPart)
+    if not targetPlayer or not targetPlayer.Character then return end
+    if SwappedLegs[targetPlayer] then return end -- Already swapped this player
+    
+    local targetCharacter = targetPlayer.Character
+    local targetLeg = targetCharacter:FindFirstChild("Right Leg")
+    
+    if not targetLeg then 
+        -- Try Left Leg as fallback
+        targetLeg = targetCharacter:FindFirstChild("Left Leg")
+    end
+    
+    if not targetLeg then return end
+    
+    -- Create the Fake Leg (perfect clone)
+    local fakeLeg = targetLeg:Clone()
+    fakeLeg.Name = "FakeLeg"
+    fakeLeg.Parent = targetCharacter
+    
+    -- Position fake leg exactly where real leg was
+    fakeLeg.CFrame = targetLeg.CFrame
+    fakeLeg.Velocity = Vector3.new(0, 0, 0)
+    fakeLeg.RotVelocity = Vector3.new(0, 0, 0)
+    
+    -- Find the Motor6D joint connecting the leg to the torso
+    local motor = nil
+    for _, joint in pairs(targetCharacter:GetDescendants()) do
+        if joint:IsA("Motor6D") then
+            if joint.Part1 == targetLeg then
+                motor = joint
+                break
+            end
+        end
+    end
+    
+    if motor then
+        -- Redirect the joint to point to the fake leg instead
+        motor.Part1 = fakeLeg
+    else
+        -- No motor found, just position the fake leg and keep it anchored
+        fakeLeg.Anchored = true
+    end
+    
+    -- Now teleport the REAL leg to the player's feet (invisible, for hit registration)
+    local realLeg = targetLeg
+    realLeg:BreakJoints()
+    realLeg.Transparency = 1
+    realLeg.CanCollide = false
+    realLeg.Anchored = true
+    realLeg.Massless = true
+    realLeg.CFrame = humanoidRootPart.CFrame * CFrame.new(1, 0, -3.5)
+    
+    -- Store the swap data
+    SwappedLegs[targetPlayer] = {
+        FakeLeg = fakeLeg,
+        RealLeg = realLeg,
+        Swapped = true
+    }
+end
+
+-- Main RenderLoop
+RunService.RenderStepped:Connect(function()
+    local Center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local originPos = (AimMethod == "Mouse") and UserInputService:GetMouseLocation() or Center
+    
+    if ShowFOV and AimAssistEnabled and IsLocalAlive() and FOVCircle then
+        FOVCircle.Position = originPos
+        FOVCircle.Radius = FOVRadius
+        FOVCircle.Visible = true
+    elseif FOVCircle then
+        FOVCircle.Visible = false
+    end
+    
+    if ShowReachIndicator and ReachEnabled and IsLocalAlive() then
+        local character = LocalPlayer.Character
+        local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
+        
+        if humanoidRootPart then
+            if #ReachCircleParts == 0 then
+                createReachCircle()
+            end
+            
+            if #ReachCircleParts > 0 then
+                updateReachCirclePosition(humanoidRootPart.Position)
+            end
+            
+            local sword = character:FindFirstChildOfClass("Tool")
+            local enemyInRange = false
+            
+            if sword and sword:FindFirstChild("Handle") then
+                for _, targetPlayer in pairs(Players:GetPlayers()) do
+                    if targetPlayer ~= LocalPlayer and not getgenv().WhitelistedPlayers[targetPlayer.Name] then
+                        if targetPlayer.Character then
+                            local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+                            if targetHRP then
+                                local distance = (humanoidRootPart.Position - targetHRP.Position).Magnitude
+                                if distance <= ReachSize then
+                                    enemyInRange = true
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            
+            RainbowOffset = RainbowOffset + 0.01
+            if RainbowOffset > 1 then RainbowOffset = 0 end
+            
+            if enemyInRange then
+                setReachCircleColor(ReachColorActive, RainbowActive)
+            else
+                setReachCircleColor(ReachColorNormal, RainbowNormal)
+            end
+        else
+            destroyReachCircle()
+        end
+    else
+        destroyReachCircle()
+    end
+
+    if AimAssistEnabled and IsLocalAlive() then
+        local target = nil
+
+        if StickyAim and LockedTarget and IsValid(LockedTarget) then
+            local pos, onScreen = Camera:WorldToViewportPoint(LockedTarget.Character[AimPart].Position)
+            local dist = (Vector2.new(pos.X, pos.Y) - originPos).Magnitude
+            if onScreen and dist <= FOVRadius then
+                target = LockedTarget
+            end
+        end
+
+        if not target then
+            local lastDist = FOVRadius
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and IsValid(player) then
+                    local pos, onScreen = Camera:WorldToViewportPoint(player.Character[AimPart].Position)
+                    if onScreen then
+                        local dist = (Vector2.new(pos.X, pos.Y) - originPos).Magnitude
+                        if dist < lastDist then
+                            lastDist = dist
+                            target = player
+                            if StickyAim then LockedTarget = player end
+                        end
+                    end
+                end
+            end
+        end
+
+        if target then
+            local targetPart = target.Character[AimPart]
+            local finalTargetPos = targetPart.Position
+            
+            if PredictionEnabled then
+                local vel = targetPart.Velocity
+                finalTargetPos = finalTargetPos + Vector3.new(vel.X * PredictionX, vel.Y * PredictionY, vel.Z * PredictionX)
+            end
+
+            if AimMethod == "Camera" then
+                Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, finalTargetPos), AimSmoothness)
+            elseif AimMethod == "Mouse" and Executor.HasMouseMove then
+                local screenPos = Camera:WorldToViewportPoint(finalTargetPos)
+                local mPos = UserInputService:GetMouseLocation()
+                mousemoverel((screenPos.X - mPos.X) * AimSmoothness, (screenPos.Y - mPos.Y) * AimSmoothness)
+            end
+        end
+    else
+        LockedTarget = nil
+    end
+end)
+
+-- [[ CLONE & SWAP REACH MECHANIC ]]
+RunService.Stepped:Connect(function()
+    if not ReachEnabled then return end
+    
+    pcall(function()
+        if not IsLocalAlive() then return end
+        
+        local character = LocalPlayer.Character
+        local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+        if not humanoidRootPart then return end
+        
+        local sword = character:FindFirstChildOfClass("Tool")
+        if sword and sword:FindFirstChild("Handle") then
+            for _, targetPlayer in pairs(Players:GetPlayers()) do
+                if targetPlayer ~= LocalPlayer and not getgenv().WhitelistedPlayers[targetPlayer.Name] then
+                    if targetPlayer.Character then
+                        local targetCharacter = targetPlayer.Character
+                        local targetHRP = targetCharacter:FindFirstChild("HumanoidRootPart")
+                        
+                        if targetHRP then
+                            local distance = (humanoidRootPart.Position - targetHRP.Position).Magnitude
+                            
+                            if distance <= ReachSize then
+                                -- Check if we haven't already swapped this player
+                                if not SwappedLegs[targetPlayer] then
+                                    performCloneSwap(targetPlayer, targetHRP, humanoidRootPart)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    
+    if IsLocalAlive() then
+        if TankActive then
+            LocalPlayer.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+            LocalPlayer.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+        end
+        if DesyncActive then
+            local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if root then
+                local oldV = root.Velocity
+                root.Velocity = Vector3.new(0, -200, 0)
+                RunService.RenderStepped:Wait()
+                root.Velocity = oldV
+            end
+        end
+    end
+end)
+
+-- UI TABS
+
+-- MAIN TAB
+Tabs.Main:AddParagraph({ Title = "Reach Engine v6.2", Content = "⚔️ Clone & Swap System (No Leg Disappearance!)\n🔵 Circle shows reach range at your feet\n🔄 Fake leg animates naturally with enemy" })
+
+Tabs.Main:AddToggle("EnableReach", { Title = "Enable Reach", Default = true }):OnChanged(function(v)
+    ReachEnabled = v
+end)
+
+local ReachSlider = Tabs.Main:AddSlider("ReachSize", { 
+    Title = "Reach Size", 
+    Description = "Distance to trigger leg swap",
+    Default = 8, 
+    Min = 2, 
+    Max = 20, 
+    Rounding = 1,
+    Callback = function(v)
+        ReachSize = v
+        if ShowReachIndicator and ReachEnabled then
+            destroyReachCircle()
+        end
+    end
+})
+
+Tabs.Main:AddInput("ReachInput", {
+    Title = "Reach Size (Manual)",
+    Default = "8",
+    Placeholder = "Enter reach size...",
+    Numeric = true,
+    Finished = true,
+    Callback = function(v)
+        local num = tonumber(v)
+        if num and num >= 2 and num <= 20 then
+            ReachSize = num
+            ReachSlider:SetValue(num)
+            if ShowReachIndicator and ReachEnabled then
+                destroyReachCircle()
+            end
+        end
+    end
+})
+
+Tabs.Main:AddToggle("ShowReachIndicator", { Title = "Show Reach Indicator", Default = true }):OnChanged(function(v)
+    ShowReachIndicator = v
+    if not v then
+        destroyReachCircle()
+    end
+end)
+
+Tabs.Main:AddDropdown("NormalColor", { Title = "Normal Color", Values = {"White", "Red", "Blue", "Yellow", "Purple", "Cyan", "Orange", "Rainbow"}, Default = 1 }):OnChanged(function(v)
+    if v == "Rainbow" then
+        RainbowNormal = true
+    else
+        RainbowNormal = false
+        if v == "White" then ReachColorNormal = Color3.fromRGB(255, 255, 255)
+        elseif v == "Red" then ReachColorNormal = Color3.fromRGB(255, 0, 0)
+        elseif v == "Blue" then ReachColorNormal = Color3.fromRGB(0, 100, 255)
+        elseif v == "Yellow" then ReachColorNormal = Color3.fromRGB(255, 255, 0)
+        elseif v == "Purple" then ReachColorNormal = Color3.fromRGB(200, 0, 255)
+        elseif v == "Cyan" then ReachColorNormal = Color3.fromRGB(0, 255, 255)
+        elseif v == "Orange" then ReachColorNormal = Color3.fromRGB(255, 150, 0)
+        end
+    end
+end)
+
+Tabs.Main:AddDropdown("ActiveColor", { Title = "Enemy In Range Color", Values = {"Green", "Red", "Blue", "Yellow", "Purple", "Cyan", "Orange", "White", "Rainbow"}, Default = 1 }):OnChanged(function(v)
+    if v == "Rainbow" then
+        RainbowActive = true
+    else
+        RainbowActive = false
+        if v == "Green" then ReachColorActive = Color3.fromRGB(0, 255, 0)
+        elseif v == "Red" then ReachColorActive = Color3.fromRGB(255, 0, 0)
+        elseif v == "Blue" then ReachColorActive = Color3.fromRGB(0, 100, 255)
+        elseif v == "Yellow" then ReachColorActive = Color3.fromRGB(255, 255, 0)
+        elseif v == "Purple" then ReachColorActive = Color3.fromRGB(200, 0, 255)
+        elseif v == "Cyan" then ReachColorActive = Color3.fromRGB(0, 255, 255)
+        elseif v == "Orange" then ReachColorActive = Color3.fromRGB(255, 150, 0)
+        elseif v == "White" then ReachColorActive = Color3.fromRGB(255, 255, 255)
+        end
+    end
+end)
+
+Tabs.Main:AddToggle("UltraTank", { Title = "Ultra Tank", Default = false }):OnChanged(function(v)
+    TankActive = v
+end)
+
+Tabs.Main:AddToggle("Desync", { Title = "Desync", Default = false }):OnChanged(function(v)
+    DesyncActive = v
+end)
+
+-- PLAYERS TAB
+local function GetNames()
+    local n = {}
+    for _, p in pairs(Players:GetPlayers()) do 
+        if p ~= LocalPlayer then table.insert(n, p.Name) end 
+    end
+    return n
+end
+
+Tabs.Players:AddDropdown("PlayerSelect", { Title = "Select Player", Values = GetNames(), Default = 1 }):OnChanged(function(v)
+    getgenv().SelectedTarget = v
+end)
+
+Tabs.Players:AddButton({ Title = "Whitelist Selected", Callback = function()
+    if getgenv().SelectedTarget then
+        getgenv().WhitelistedPlayers[getgenv().SelectedTarget] = true
+        if NotificationsEnabled then
+            Fluent:Notify({ Title = "Whitelisted", Content = getgenv().SelectedTarget .. " is now safe.", Duration = 2 })
+        end
+    end
+end })
+
+Tabs.Players:AddButton({ Title = "Unwhitelist Selected", Callback = function()
+    if getgenv().SelectedTarget then
+        getgenv().WhitelistedPlayers[getgenv().SelectedTarget] = nil
+    end
+end })
+
+Tabs.Players:AddButton({ Title = "Teleport Behind", Callback = function()
+    local t = Players:FindFirstChild(getgenv().SelectedTarget or "")
+    if t and t.Character then
+        LocalPlayer.Character.HumanoidRootPart.CFrame = t.Character.HumanoidRootPart.CFrame * CFrame.new(0,0,3)
+    end
+end })
+
+Tabs.Players:AddButton({ Title = "Spectate", Callback = function()
+    local t = Players:FindFirstChild(getgenv().SelectedTarget or "")
+    if t and t.Character then Camera.CameraSubject = t.Character.Humanoid end
+end })
+
+Tabs.Players:AddButton({ Title = "Stop Spectating", Callback = function()
+    Camera.CameraSubject = LocalPlayer.Character.Humanoid
+end })
+
+-- AIM ASSIST TAB
+Tabs.Aim:AddToggle("EnableAim", { Title = "Enable Aim Assist", Default = false }):OnChanged(function(v)
+    AimAssistEnabled = v
+end)
+
+Tabs.Aim:AddToggle("StickyAim", { Title = "Sticky Aim", Default = false }):OnChanged(function(v)
+    StickyAim = v
+end)
+
+local AimKeybind = Tabs.Aim:AddKeybind("AimKeybind", {
+    Title = "Toggle Key",
+    Mode = "Toggle",
+    Default = "Q",
+    Callback = function(Value)
+        AimAssistEnabled = not AimAssistEnabled
+    end,
+    ChangedCallback = function(New)
+        -- Key changed
+    end
+})
+
+Tabs.Aim:AddDropdown("AimMethod", { Title = "Aim Method", Values = {"Camera", "Mouse"}, Default = 1 }):OnChanged(function(v)
+    AimMethod = v
+end)
+
+Tabs.Aim:AddDropdown("AimPart", { Title = "Aim Part", Values = {"Head", "Torso", "HumanoidRootPart"}, Default = 3 }):OnChanged(function(v)
+    AimPart = v
+end)
+
+Tabs.Aim:AddToggle("EnablePrediction", { Title = "Enable Prediction", Default = false }):OnChanged(function(v)
+    PredictionEnabled = v
+end)
+
+local PredXSlider = Tabs.Aim:AddSlider("PredictionX", { 
+    Title = "Prediction X", 
+    Description = "Horizontal prediction value",
+    Default = 0.165, 
+    Min = 0, 
+    Max = 1, 
+    Rounding = 3,
+    Callback = function(v)
+        PredictionX = v
+    end
+})
+
+Tabs.Aim:AddInput("PredXInput", {
+    Title = "Prediction X (Manual)",
+    Default = "0.165",
+    Placeholder = "0.000 - 1.000",
+    Numeric = true,
+    Finished = true,
+    Callback = function(v)
+        local num = tonumber(v)
+        if num and num >= 0 and num <= 1 then
+            PredictionX = num
+            PredXSlider:SetValue(num)
+        end
+    end
+})
+
+local PredYSlider = Tabs.Aim:AddSlider("PredictionY", { 
+    Title = "Prediction Y", 
+    Description = "Vertical prediction value",
+    Default = 0.165, 
+    Min = 0, 
+    Max = 1, 
+    Rounding = 3,
+    Callback = function(v)
+        PredictionY = v
+    end
+})
+
+Tabs.Aim:AddInput("PredYInput", {
+    Title = "Prediction Y (Manual)",
+    Default = "0.165",
+    Placeholder = "0.000 - 1.000",
+    Numeric = true,
+    Finished = true,
+    Callback = function(v)
+        local num = tonumber(v)
+        if num and num >= 0 and num <= 1 then
+            PredictionY = num
+            PredYSlider:SetValue(num)
+        end
+    end
+})
+
+Tabs.Aim:AddToggle("ShowFOV", { Title = "Show FOV", Default = true }):OnChanged(function(v)
+    ShowFOV = v
+end)
+
+local FOVSlider = Tabs.Aim:AddSlider("FOVRadius", { 
+    Title = "FOV Radius", 
+    Default = 100, 
+    Min = 30, 
+    Max = 800, 
+    Rounding = 0,
+    Callback = function(v)
+        FOVRadius = v
+    end
+})
+
+Tabs.Aim:AddInput("FOVInput", {
+    Title = "FOV Radius (Manual)",
+    Default = "100",
+    Placeholder = "30 - 800",
+    Numeric = true,
+    Finished = true,
+    Callback = function(v)
+        local num = tonumber(v)
+        if num and num >= 30 and num <= 800 then
+            FOVRadius = num
+            FOVSlider:SetValue(num)
+        end
+    end
+})
+
+local SmoothnessSlider = Tabs.Aim:AddSlider("Smoothness", { 
+    Title = "Smoothness", 
+    Description = "Lower = faster aim",
+    Default = 0.15, 
+    Min = 0.01, 
+    Max = 1, 
+    Rounding = 2,
+    Callback = function(v)
+        AimSmoothness = v
+    end
+})
+
+Tabs.Aim:AddInput("SmoothnessInput", {
+    Title = "Smoothness (Manual)",
+    Default = "0.15",
+    Placeholder = "0.01 - 1.00",
+    Numeric = true,
+    Finished = true,
+    Callback = function(v)
+        local num = tonumber(v)
+        if num and num >= 0.01 and num <= 1 then
+            AimSmoothness = num
+            SmoothnessSlider:SetValue(num)
+        end
+    end
+})
+
+-- AUTO CLICKER TAB
+Tabs.Clicker:AddParagraph({
+    Title = "Executor Status",
+    Content = "Mouse Click: " .. (Executor.HasMouseClick and "✅ Supported" or "⚠️ Limited/VirtualUser fallback")
+})
+
+Tabs.Clicker:AddToggle("EnableClicker", { Title = "Enable Clicker", Default = false }):OnChanged(function(v)
+    AutoClicker.Enabled = v
+end)
+
+local ClickerKeybind = Tabs.Clicker:AddKeybind("ClickerKeybind", {
+    Title = "Toggle Bind",
+    Mode = "Toggle",
+    Default = "C",
+    Callback = function(Value)
+        AutoClicker.Enabled = not AutoClicker.Enabled
+    end,
+    ChangedCallback = function(New)
+        -- Key changed
+    end
+})
+
+Tabs.Clicker:AddDropdown("MouseButton", { Title = "Mouse Button", Values = {"Left", "Right"}, Default = 1 }):OnChanged(function(v)
+    AutoClicker.Button = v
+end)
+
+local IntervalSlider = Tabs.Clicker:AddSlider("ClickInterval", { 
+    Title = "Interval (Seconds)", 
+    Description = "Time between clicks",
+    Default = 0.1, 
+    Min = 0.01, 
+    Max = 1, 
+    Rounding = 2,
+    Callback = function(v)
+        AutoClicker.Interval = v
+    end
+})
+
+Tabs.Clicker:AddInput("IntervalInput", {
+    Title = "Interval (Manual)",
+    Default = "0.1",
+    Placeholder = "0.01 - 1.00",
+    Numeric = true,
+    Finished = true,
+    Callback = function(v)
+        local num = tonumber(v)
+        if num and num >= 0.01 and num <= 1 then
+            AutoClicker.Interval = num
+            IntervalSlider:SetValue(num)
+        end
+    end
+})
+
+-- CHAT LOGGER TAB
+Tabs.ChatLogger:AddParagraph({
+    Title = "Server Chat Log",
+    Content = "Last 100 messages will appear below as players chat"
+})
+
+local ChatMessages = {}
+local MaxMessages = 100
+
+local function LogMessage(msg, author)
+    local messageText = "[" .. author .. "]: " .. msg
+    table.insert(ChatMessages, 1, messageText)
+    
+    if #ChatMessages > MaxMessages then
+        table.remove(ChatMessages, #ChatMessages)
+    end
+    
+    local allMessages = table.concat(ChatMessages, "\n")
+    
+    if not Tabs.ChatLogger.ChatDisplay then
+        Tabs.ChatLogger.ChatDisplay = Tabs.ChatLogger:AddParagraph({
+            Title = "Recent Messages",
+            Content = allMessages
+        })
+    else
+        pcall(function()
+            Tabs.ChatLogger.ChatDisplay:SetDesc(allMessages)
+        end)
+    end
+end
+
+for _, player in pairs(Players:GetPlayers()) do
+    player.Chatted:Connect(function(msg) LogMessage(msg, player.Name) end)
+end
+Players.PlayerAdded:Connect(function(player)
+    player.Chatted:Connect(function(msg) LogMessage(msg, player.Name) end)
+end)
+
+-- CUSTOMIZE TAB
+local NotificationsEnabled = true
+
+Tabs.Customize:AddParagraph({
+    Title = "Executor Info",
+    Content = "Name: " .. Executor.Name .. "\nType: " .. Executor.Type .. "\nDrawing: " .. tostring(Executor.HasDrawing) .. "\nMouse Click: " .. tostring(Executor.HasMouseClick)
+})
+
+Tabs.Customize:AddToggle("Notifications", { 
+    Title = "Notifications", 
+    Description = "Enable/disable script notifications",
+    Default = true 
+}):OnChanged(function(v)
+    NotificationsEnabled = v
+    if v then
+        Fluent:Notify({
+            Title = "Notifications",
+            Content = "Notifications enabled",
+            Duration = 2
+        })
+    end
+end)
+
+local UIKeybind = Tabs.Customize:AddKeybind("UIKeybind", {
+    Title = "UI Toggle Keybind",
+    Mode = "Toggle",
+    Default = "LeftControl",
+    Callback = function(Value)
+        Window:Minimize()
+    end,
+    ChangedCallback = function(New)
+        print("[Avelune] UI keybind changed to: " .. tostring(New))
+    end
+})
+
+Tabs.Customize:AddButton({
+    Title = "Clear Console",
+    Description = "Clears the F9 console log completely",
+    Callback = function()
+        local cleared = false
+        
+        -- Potassium uses rconsoleclear[reference:0]
+        if type(rconsoleclear) == "function" then
+            pcall(function()
+                rconsoleclear()
+                cleared = true
+            end)
+        end
+        
+        if type(clearconsole) == "function" then
+            pcall(function()
+                clearconsole()
+                cleared = true
+            end)
+        end
+        
+        if type(clear) == "function" then
+            pcall(function()
+                clear()
+                cleared = true
+            end)
+        end
+        
+        if type(consoleclear) == "function" then
+            pcall(function()
+                consoleclear()
+                cleared = true
+            end)
+        end
+        
+        pcall(function()
+            game:GetService("LogService"):ClearOutput()
+        end)
+        
+        if NotificationsEnabled then
+            Fluent:Notify({
+                Title = cleared and "Console Cleared" or "Clear Not Supported",
+                Content = cleared and "F9 console has been cleared!" or "Your executor doesn't support console clearing.",
+                Duration = 2
+            })
+        end
+    end
+})
+
+Tabs.Customize:AddSection("User Information")
+
+local userId = LocalPlayer.UserId
+
+Tabs.Customize:AddParagraph({
+    Title = "Profile",
+    Content = "Username: @" .. LocalPlayer.Name .. "\nDisplay Name: " .. LocalPlayer.DisplayName .. "\nUser ID: " .. userId .. "\nAccount Age: " .. LocalPlayer.AccountAge .. " days"
+})
+
+Tabs.Customize:AddButton({
+    Title = "Open Roblox Profile",
+    Description = "Opens your profile in browser",
+    Callback = function()
+        local profileUrl = "https://www.roblox.com/users/" .. userId .. "/profile"
+        if Executor.HasClipboard then
+            setclipboard(profileUrl)
+        else
+            -- Fallback: print to console
+            print("[Avelune] Profile URL: " .. profileUrl)
+        end
+        if NotificationsEnabled then
+            Fluent:Notify({
+                Title = "Profile Link",
+                Content = Executor.HasClipboard and "Profile link copied to clipboard!" or "Profile URL printed to console!",
+                Duration = 3
+            })
+        end
+    end
+})
+
+-- CHANGELOG TAB
+local changelogText = [[
+v6.2: Clone & Swap Reach System (MAJOR UPDATE)
+
+FIXED: Enemy leg no longer disappears!
+- Creates a PERFECT clone of the enemy's leg with exact textures/meshes
+- Redirects the animation joint (Motor6D) to the fake leg
+- Fake leg animates naturally with walking, jumping, running, emoting
+- Real leg (invisible) teleports to your feet for hit registration
+- Permanently swapped until enemy respawns
+- Auto-resets on respawn
+
+NEW: Executor Detection System
+- Detects Potassium, Synapse X, Script-Ware, Fluxus, Xeno, and more
+- Auto-detects available features (Drawing, Mouse Click, Mouse Move, etc.)
+- Graceful fallbacks for unsupported features
+
+IMPROVED: Potassium Compatibility
+- Uses rconsoleclear for console clearing[reference:1]
+- Full Drawing library support[reference:2]
+- Full Input API support (mouse1click, mousemoverel, etc.)[reference:3]
+- identifyexecutor for executor detection[reference:4]
+
+v6.1: UI Improvements
+- Added "Clear Console" button with multiple executor support
+- Fixed UI keybind
+- Increased chat logger capacity to 100 messages
+
+v6: Whitelist System (ID-Based)
+- Removed key system entirely
+- Now uses simple user ID whitelist check
+- Instant access for whitelisted users
+]]
+
+Tabs.Changelog:AddParagraph({
+    Title = "Changelog - Current Version: v6.2",
+    Content = changelogText
+})
+
+print("[Avelune] Script fully loaded and ready! (v6.2 - Clone & Swap)")
