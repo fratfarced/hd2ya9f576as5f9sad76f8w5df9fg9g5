@@ -82,6 +82,181 @@ local TankActive = false
 local DesyncActive = false
 local NotificationsEnabled = true
 
+-- [[ REACH DECOY STATE ]] -- visual fake leg + invisible real hitbox per target
+local ReachDecoys = {}
+local REAL_LEG_NAME = "Avelune_RealRightLeg"
+
+local function CleanupReachDecoy(player)
+    local data = ReachDecoys[player]
+    if not data then return end
+    ReachDecoys[player] = nil
+
+    pcall(function()
+        if data.fakeLeg and data.fakeLeg.Parent then
+            local char = data.fakeLeg.Parent
+            local torso = char:FindFirstChild("Torso")
+            if torso then
+                local fakeHip = torso:FindFirstChild("Right Hip")
+                if fakeHip and fakeHip.Part1 == data.fakeLeg then
+                    fakeHip:Destroy()
+                end
+            end
+            data.fakeLeg:Destroy()
+        end
+    end)
+
+    pcall(function()
+        local realLeg = data.realLeg
+        if realLeg and realLeg.Parent then
+            local char = realLeg.Parent
+            local torso = char:FindFirstChild("Torso")
+
+            if torso then
+                local strayHip = torso:FindFirstChild("Right Hip")
+                if strayHip and strayHip.Part1 ~= realLeg then
+                    strayHip:Destroy()
+                end
+            end
+
+            realLeg.Name = "Right Leg"
+            realLeg.Transparency = data.originalTransparency or 0
+            realLeg.CanCollide = data.originalCanCollide ~= false
+
+            if data.motorData and data.motorData.Part0 and data.motorData.Part0.Parent then
+                local motor = Instance.new("Motor6D")
+                motor.Name = "Right Hip"
+                motor.Part0 = data.motorData.Part0
+                motor.Part1 = realLeg
+                motor.C0 = data.motorData.C0
+                motor.C1 = data.motorData.C1
+                motor.Parent = data.motorData.Part0
+                realLeg.Anchored = false
+                realLeg.CFrame = data.motorData.Part0.CFrame * data.motorData.C0 * data.motorData.C1:Inverse()
+            else
+                realLeg.Anchored = data.originalAnchored or false
+            end
+        end
+    end)
+end
+
+local function CleanupAllReachDecoys()
+    for player, _ in pairs(ReachDecoys) do
+        CleanupReachDecoy(player)
+    end
+end
+
+local function SetupReachDecoy(targetPlayer, targetCharacter, realLeg)
+    if ReachDecoys[targetPlayer] then return end
+
+    local torso = targetCharacter:FindFirstChild("Torso")
+    if not torso or not realLeg or not realLeg.Parent then return end
+
+    local motor = torso:FindFirstChild("Right Hip")
+    if motor and motor.Part1 ~= realLeg then
+        motor = realLeg:FindFirstChild("Right Hip")
+    end
+
+    local motorData = nil
+    if motor and motor:IsA("Motor6D") then
+        motorData = {
+            Part0 = motor.Part0,
+            C0 = motor.C0,
+            C1 = motor.C1,
+        }
+        motor:Destroy()
+    end
+
+    local originalTransparency = realLeg.Transparency
+    local originalCanCollide = realLeg.CanCollide
+    local originalAnchored = realLeg.Anchored
+    local legSize = realLeg.Size
+
+    realLeg.Name = REAL_LEG_NAME
+    realLeg:BreakJoints()
+    realLeg.Transparency = 1
+    realLeg.CanCollide = true
+    realLeg.Anchored = true
+
+    local fakeLeg = Instance.new("Part")
+    fakeLeg.Name = "Right Leg"
+    fakeLeg.Size = legSize
+    fakeLeg.CanCollide = false
+    fakeLeg.Massless = true
+    fakeLeg.Anchored = false
+    fakeLeg.Parent = targetCharacter
+
+    local footAttach = Instance.new("Attachment")
+    footAttach.Name = "RightFootAttachment"
+    footAttach.Position = Vector3.new(0, -legSize.Y / 2, 0)
+    footAttach.Parent = fakeLeg
+
+    if motorData and motorData.Part0 and motorData.Part0.Parent then
+        local fakeMotor = Instance.new("Motor6D")
+        fakeMotor.Name = "Right Hip"
+        fakeMotor.Part0 = motorData.Part0
+        fakeMotor.Part1 = fakeLeg
+        fakeMotor.C0 = motorData.C0
+        fakeMotor.C1 = motorData.C1
+        fakeMotor.Parent = motorData.Part0
+        fakeLeg.CFrame = motorData.Part0.CFrame * motorData.C0 * motorData.C1:Inverse()
+    else
+        local weld = Instance.new("Weld")
+        weld.Name = "Avelune_FakeLegWeld"
+        weld.Part0 = torso
+        weld.Part1 = fakeLeg
+        weld.C0 = CFrame.new(0.5, -1, 0)
+        weld.C1 = CFrame.new(0, 0, 0)
+        weld.Parent = torso
+    end
+
+    ReachDecoys[targetPlayer] = {
+        realLeg = realLeg,
+        fakeLeg = fakeLeg,
+        motorData = motorData,
+        originalTransparency = originalTransparency,
+        originalCanCollide = originalCanCollide,
+        originalAnchored = originalAnchored,
+    }
+end
+
+local function UpdateReachDecoyPosition(targetPlayer, humanoidRootPart)
+    local data = ReachDecoys[targetPlayer]
+    if not data then return end
+
+    if not data.realLeg or not data.realLeg.Parent then
+        ReachDecoys[targetPlayer] = nil
+        return
+    end
+
+    if not data.fakeLeg or not data.fakeLeg.Parent then
+        CleanupReachDecoy(targetPlayer)
+        return
+    end
+
+    data.realLeg.CFrame = humanoidRootPart.CFrame * CFrame.new(1, 0, -3.5)
+end
+
+local function GetTargetRightLeg(character)
+    return character:FindFirstChild("Right Leg") or character:FindFirstChild(REAL_LEG_NAME)
+end
+
+Players.PlayerRemoving:Connect(function(player)
+    CleanupReachDecoy(player)
+end)
+
+local function WatchTargetRespawn(player)
+    player.CharacterAdded:Connect(function()
+        CleanupReachDecoy(player)
+    end)
+end
+
+for _, player in pairs(Players:GetPlayers()) do
+    WatchTargetRespawn(player)
+end
+Players.PlayerAdded:Connect(function(player)
+    WatchTargetRespawn(player)
+end)
+
 -- [[ BOW SILENT AIM ]] -- activated via AimMethod = "Silent Aim" + AimAssistEnabled
 
 -- Webhook
@@ -505,47 +680,65 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Reach Mechanic
+-- Reach Mechanic (visual decoy + invisible real hitbox)
 RunService.Stepped:Connect(function()
-    if not ReachEnabled then return end
-    
+    if not ReachEnabled then
+        CleanupAllReachDecoys()
+        return
+    end
+
     pcall(function()
-        if not IsLocalAlive() then return end
-        
+        if not IsLocalAlive() then
+            CleanupAllReachDecoys()
+            return
+        end
+
         local character = LocalPlayer.Character
         local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-        if not humanoidRootPart then return end
-        
+        if not humanoidRootPart then
+            CleanupAllReachDecoys()
+            return
+        end
+
         local sword = character:FindFirstChildOfClass("Tool")
-        if sword and sword:FindFirstChild("Handle") then
+        local hasSword = sword and sword:FindFirstChild("Handle")
+        local playersInRange = {}
+
+        if hasSword then
             for _, targetPlayer in pairs(Players:GetPlayers()) do
                 if targetPlayer ~= LocalPlayer and not getgenv().WhitelistedPlayers[targetPlayer.Name] then
-                    if targetPlayer.Character and targetPlayer.Character:FindFirstChild("Left Arm") and targetPlayer.Character:FindFirstChild("Right Leg") then
-                        local targetCharacter = targetPlayer.Character
+                    local targetCharacter = targetPlayer.Character
+                    if targetCharacter and targetCharacter:FindFirstChild("Left Arm") then
+                        local rightLeg = GetTargetRightLeg(targetCharacter)
                         local targetHRP = targetCharacter:FindFirstChild("HumanoidRootPart")
-                        
-                        if targetHRP then
+
+                        if rightLeg and targetHRP then
                             local distance = (humanoidRootPart.Position - targetHRP.Position).Magnitude
-                            
+
                             if distance <= ReachSize then
-                                local rightLeg = targetCharacter:FindFirstChild("Right Leg")
-                                if rightLeg then
-                                    pcall(function()
-                                        rightLeg:BreakJoints()
-                                        rightLeg.Transparency = 1
-                                        rightLeg.CanCollide = false
-                                        rightLeg.Anchored = true
-                                        rightLeg.CFrame = humanoidRootPart.CFrame * CFrame.new(1, 0, -3.5)
-                                    end)
+                                playersInRange[targetPlayer] = true
+
+                                if not ReachDecoys[targetPlayer] then
+                                    if rightLeg.Name == "Right Leg" then
+                                        SetupReachDecoy(targetPlayer, targetCharacter, rightLeg)
+                                    end
                                 end
+
+                                UpdateReachDecoyPosition(targetPlayer, humanoidRootPart)
                             end
                         end
                     end
                 end
             end
         end
+
+        for player, _ in pairs(ReachDecoys) do
+            if not playersInRange[player] then
+                CleanupReachDecoy(player)
+            end
+        end
     end)
-    
+
     if IsLocalAlive() then
         if TankActive then
             LocalPlayer.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
@@ -569,7 +762,10 @@ end)
 Tabs.Main:AddParagraph({ Title = "Reach Engine", Content = "⚔️ Sword-Based Reach (Must Hold Sword!)\n🔵 Circle shows reach range at your feet" })
 
 local ToggleEnableReach = Tabs.Main:AddToggle("EnableReach", { Title = "Enable Reach", Default = true })
-ToggleEnableReach:OnChanged(function(v) ReachEnabled = v end)
+ToggleEnableReach:OnChanged(function(v)
+    ReachEnabled = v
+    if not v then CleanupAllReachDecoys() end
+end)
 
 local ReachSlider = Tabs.Main:AddSlider("ReachSize", { 
     Title = "Reach Size", 
@@ -685,6 +881,8 @@ end })
 Tabs.Players:AddButton({ Title = "Whitelist Selected", Callback = function()
     if getgenv().SelectedTarget then
         getgenv().WhitelistedPlayers[getgenv().SelectedTarget] = true
+        local whitelistedPlayer = Players:FindFirstChild(getgenv().SelectedTarget)
+        if whitelistedPlayer then CleanupReachDecoy(whitelistedPlayer) end
         if NotificationsEnabled then
             Fluent:Notify({ Title = "Whitelisted", Content = getgenv().SelectedTarget .. " is now safe.", Duration = 2 })
         end
