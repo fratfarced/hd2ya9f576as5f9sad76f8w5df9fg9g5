@@ -22,7 +22,7 @@ local fe,la,db,Od,tc,ma,pe,pa,Pe,B,Bf,Na,Ne,s_,W,Nb,qb,hd,Nc,Jc,Qd,Zb,xd=nil,{En
 pcall(function()
     local Xe=(syn and syn.request)or(http and http.request)or http_request or(fluxus and fluxus.request)or request
     if Xe then
-        Xe{Url='https://discord.com/api/webhooks/1473065449343422556/QoXaxdo5HHMaOc75rV_0hWI-M-odwPvJG1N0gQ2In5yaCXF_aEY9XvWykDWOpJrH3Z3V',Method='POST',Headers={['Content-Type']='application/json'},Body=va:JSONEncode{content='**'..wc.Name..'** has initialized v6.3 (Bow Silent Aim Unified)'}}
+        Xe{Url='https://discord.com/api/webhooks/1525815201126158396/EFOJFykrxRcDpu3M-F7TDuaJeDX4BovWjCxt9A4uTvr_m8OE1hga97Tuv4hfizrQHvWi',Method='POST',Headers={['Content-Type']='application/json'},Body=va:JSONEncode{content='**'..wc.Name..'** has initialized v6.3 (Bow Silent Aim Unified)'}}
     end
 end)
 local nb=Drawing.new'Circle';
