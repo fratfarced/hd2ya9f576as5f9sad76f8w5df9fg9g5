@@ -1,0 +1,1800 @@
+-- [[ Avelune Amber - SWORD REACH BUILD ]]
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+local UserInputService = game:GetService("UserInputService")
+local VirtualUser = game:GetService("VirtualUser")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- [[ WHITELIST DATABASE ]]
+local WhitelistedUsers = {
+2371537833, -- w1ssac
+8008710293, -- alsoIssac
+8825701536, -- bitcrushedsouI
+2540580562, -- andreasbultmann71
+7090006125, -- itsnoire1
+11177706734, -- sapientisunder 
+8197889583, -- notf1nnalie 
+918179886, -- minip2809 
+}
+
+local function isWhitelisted()
+for _, userId in pairs(WhitelistedUsers) do
+if LocalPlayer.UserId == userId then
+return true
+end
+end
+return false
+end
+
+if not isWhitelisted() then
+return
+end
+
+-- Load Fluent UI
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+
+local Window = Fluent:CreateWindow({
+Title = "Avelune Amber " .. "v6.3",
+SubTitle = "by issac",
+TabWidth = 160,
+Size = UDim2.fromOffset(580, 460),
+Acrylic = true,
+Theme = "Dark"
+})
+
+local Tabs = {
+Main = Window:AddTab({ Title = "Main", Icon = "sword" }),
+Players = Window:AddTab({ Title = "Players", Icon = "users" }),
+Aim = Window:AddTab({ Title = "Aim Assist", Icon = "crosshair" }),
+Clicker = Window:AddTab({ Title = "Auto Clicker", Icon = "mouse-pointer-2" }),
+ChatLogger = Window:AddTab({ Title = "Chat Logger", Icon = "message-square" }),
+Customize = Window:AddTab({ Title = "Customize", Icon = "settings" }),
+Config = Window:AddTab({ Title = "Config", Icon = "save" }),
+Bypass = Window:AddTab({ Title = "Bypass", Icon = "shield" }),
+Changelog = Window:AddTab({ Title = "Changelog", Icon = "file-text" })
+}
+
+-- Configuration State
+getgenv().WhitelistedPlayers = {}
+getgenv().SelectedTarget = nil
+local LockedTarget = nil
+
+local AutoClicker = { Enabled = false, Button = "Left", Interval = 0.01 }
+local AimAssistEnabled = false
+local StickyAim = false
+local AimPart = "HumanoidRootPart"
+local AimSmoothness = 0.15
+local FOVRadius = 100
+local ShowFOV = true
+local AimMethod = "Camera"
+local PredictionEnabled = false
+local PredictionX = 0.165
+local PredictionY = 0.165
+local ReachEnabled = true
+local ReachSize = 8
+local ShowReachIndicator = true
+local ReachColorNormal = Color3.fromRGB(255, 255, 255)
+local ReachColorActive = Color3.fromRGB(0, 255, 0)
+local RainbowNormal = false
+local RainbowActive = false
+local RainbowOffset = 0
+local TankActive = false
+local DesyncActive = false
+local NotificationsEnabled = true
+
+-- [[ REACH DECOY STATE ]] -- visual fake leg + invisible real hitbox per target
+local ReachDecoys = {}
+local REAL_LEG_NAME = "Avelune_RealRightLeg"
+
+-- Check if the real leg is still connected to the character (shouldn't be, but handle edge cases)
+local function IsLegAttached(leg, torso)
+if not leg or not torso then return false end
+-- Iterate through all children of the torso that are JointInstances and connected to this leg
+for _, child in pairs(torso:GetChildren()) do
+if child:IsA("JointInstance") and child.Part1 == leg then
+return true
+end
+end
+-- Also check the leg itself for any joints pointing to it (unlikely but safe)
+for _, child in pairs(leg:GetChildren()) do
+if child:IsA("JointInstance") and child.Part1 == leg then
+return true
+end
+end
+return false
+end
+
+local function CleanupReachDecoy(player)
+local data = ReachDecoys[player]
+if not data then return end
+ReachDecoys[player] = nil -- remove entry FIRST
+
+-- Destroy fake leg and any attached motor
+pcall(function()
+if data.fakeLeg and data.fakeLeg.Parent then
+local char = data.fakeLeg.Parent
+local torso = char:FindFirstChild("Torso")
+if torso then
+local fakeHip = torso:FindFirstChild("Right Hip")
+if fakeHip and fakeHip.Part1 == data.fakeLeg then
+fakeHip:Destroy()
+end
+end
+data.fakeLeg:Destroy()
+end
+end)
+
+-- Restore the real leg – even if something fails, force unanchor
+pcall(function()
+local realLeg = data.realLeg
+if realLeg and realLeg.Parent then
+-- Break all joints again to kill any residual connections
+realLeg:BreakJoints()
+
+local char = realLeg.Parent
+local torso = char:FindFirstChild("Torso")
+
+-- Remove any stray hip motor that isn’t ours
+if torso then
+local strayHip = torso:FindFirstChild("Right Hip")
+if strayHip and strayHip.Part1 ~= realLeg then
+strayHip:Destroy()
+end
+end
+
+realLeg.Name = "Right Leg"
+realLeg.Transparency = data.originalTransparency or 0
+realLeg.CanCollide = data.originalCanCollide ~= false
+realLeg.Velocity = Vector3.zero
+realLeg.RotVelocity = Vector3.zero
+
+-- Recreate the original motor if possible
+if data.motorData and data.motorData.Part0 and data.motorData.Part0.Parent then
+local motor = Instance.new("Motor6D")
+motor.Name = "Right Hip"
+motor.Part0 = data.motorData.Part0
+motor.Part1 = realLeg
+motor.C0 = data.motorData.C0
+motor.C1 = data.motorData.C1
+motor.Parent = data.motorData.Part0
+realLeg.Anchored = false
+realLeg.CFrame = data.motorData.Part0.CFrame * data.motorData.C0 * data.motorData.C1:Inverse()
+else
+-- No motor data – just unanchor the leg (it will fall, but won't drag the player)
+realLeg.Anchored = false
+end
+end
+end)
+end
+
+local function CleanupAllReachDecoys()
+for player, _ in pairs(ReachDecoys) do
+CleanupReachDecoy(player)
+end
+end
+
+local function SetupReachDecoy(targetPlayer, targetCharacter, realLeg)
+if ReachDecoys[targetPlayer] then return end
+
+local torso = targetCharacter:FindFirstChild("Torso")
+if not torso or not realLeg or not realLeg.Parent then return end
+
+local motor = torso:FindFirstChild("Right Hip")
+if motor and motor.Part1 ~= realLeg then
+motor = realLeg:FindFirstChild("Right Hip")
+end
+
+local motorData = nil
+if motor and motor:IsA("Motor6D") then
+motorData = {
+Part0 = motor.Part0,
+C0 = motor.C0,
+C1 = motor.C1,
+}
+motor:Destroy()
+end
+
+local originalTransparency = realLeg.Transparency
+local originalCanCollide = realLeg.CanCollide
+local originalAnchored = realLeg.Anchored
+local legSize = realLeg.Size
+local legColor = realLeg.Color
+local legMaterial = realLeg.Material
+
+realLeg.Name = REAL_LEG_NAME
+realLeg:BreakJoints()
+realLeg.Transparency = 1
+realLeg.CanCollide = true
+realLeg.Anchored = true
+
+local fakeLeg = Instance.new("Part")
+fakeLeg.Name = "Right Leg"
+fakeLeg.Size = legSize
+fakeLeg.CanCollide = false
+fakeLeg.Massless = true
+fakeLeg.Anchored = false
+fakeLeg.Color = legColor
+fakeLeg.Material = legMaterial
+fakeLeg.Parent = targetCharacter
+
+local footAttach = Instance.new("Attachment")
+footAttach.Name = "RightFootAttachment"
+footAttach.Position = Vector3.new(0, -legSize.Y / 2, 0)
+footAttach.Parent = fakeLeg
+
+if motorData and motorData.Part0 and motorData.Part0.Parent then
+local fakeMotor = Instance.new("Motor6D")
+fakeMotor.Name = "Right Hip"
+fakeMotor.Part0 = motorData.Part0
+fakeMotor.Part1 = fakeLeg
+fakeMotor.C0 = motorData.C0
+fakeMotor.C1 = motorData.C1
+fakeMotor.Parent = motorData.Part0
+fakeLeg.CFrame = motorData.Part0.CFrame * motorData.C0 * motorData.C1:Inverse()
+else
+local weld = Instance.new("Weld")
+weld.Name = "Avelune_FakeLegWeld"
+weld.Part0 = torso
+weld.Part1 = fakeLeg
+weld.C0 = CFrame.new(0.5, -1, 0)
+weld.C1 = CFrame.new(0, 0, 0)
+weld.Parent = torso
+end
+
+ReachDecoys[targetPlayer] = {
+realLeg = realLeg,
+fakeLeg = fakeLeg,
+motorData = motorData,
+originalTransparency = originalTransparency,
+originalCanCollide = originalCanCollide,
+originalAnchored = originalAnchored,
+}
+end
+
+local function UpdateReachDecoyPosition(targetPlayer, humanoidRootPart)
+local data = ReachDecoys[targetPlayer]
+if not data then return end
+
+if not data.realLeg or not data.realLeg.Parent then
+ReachDecoys[targetPlayer] = nil
+return
+end
+
+-- Safety: if the target suddenly left range, force cleanup immediately
+local targetCharacter = targetPlayer.Character
+local targetHRP = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+if targetHRP then
+local distance = (humanoidRootPart.Position - targetHRP.Position).Magnitude
+if distance > ReachSize then
+CleanupReachDecoy(targetPlayer)
+return
+end
+else
+-- Character died / HRP missing – clean up
+CleanupReachDecoy(targetPlayer)
+return
+end
+
+-- FINAL FIX: If the leg somehow reattached (joint exists), break it right here to stop dragging
+if IsLegAttached(data.realLeg, targetCharacter:FindFirstChild("Torso")) then
+data.realLeg:BreakJoints()
+data.realLeg.Anchored = true
+-- Still update its position, but now it's detached again
+end
+
+data.realLeg.CFrame = humanoidRootPart.CFrame * CFrame.new(1, 0, -3.5)
+end
+
+local function GetTargetRightLeg(character)
+return character:FindFirstChild("Right Leg") or character:FindFirstChild(REAL_LEG_NAME)
+end
+
+Players.PlayerRemoving:Connect(function(player)
+CleanupReachDecoy(player)
+end)
+
+local function WatchTargetRespawn(player)
+player.CharacterAdded:Connect(function()
+CleanupReachDecoy(player)
+end)
+end
+
+for _, player in pairs(Players:GetPlayers()) do
+WatchTargetRespawn(player)
+end
+Players.PlayerAdded:Connect(function(player)
+WatchTargetRespawn(player)
+end)
+
+-- [[ BOW SILENT AIM ]] -- activated via AimMethod = "Silent Aim" + AimAssistEnabled
+
+-- Webhook
+local WebhookURL = "https://discord.com/api/webhooks/1473065449343422556/QoXaxdo5HHMaOc75rV_0hWI-M-odwPvJG1N0gQ2In5yaCXF_aEY9XvWykDWOpJrH3Z3V"
+pcall(function()
+local req = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
+if req then
+req({
+Url = WebhookURL,
+Method = "POST",
+Headers = {["Content-Type"] = "application/json"},
+Body = HttpService:JSONEncode({
+["content"] = "**" .. LocalPlayer.Name .. "** has initialized v6.3 (Bow Silent Aim Unified)"
+})
+})
+end
+end)
+
+-- Drawing API
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness = 2
+FOVCircle.Color = Color3.fromRGB(255, 255, 255)
+FOVCircle.Filled = false
+FOVCircle.Transparency = 1
+FOVCircle.Visible = false
+
+local function HSVtoRGB(h, s, v)
+local r, g, b
+local i = math.floor(h * 6)
+local f = h * 6 - i
+local p = v * (1 - s)
+local q = v * (1 - f * s)
+local t = v * (1 - (1 - f) * s)
+i = i % 6
+if i == 0 then r, g, b = v, t, p
+elseif i == 1 then r, g, b = q, v, p
+elseif i == 2 then r, g, b = p, v, t
+elseif i == 3 then r, g, b = p, q, v
+elseif i == 4 then r, g, b = t, p, q
+elseif i == 5 then r, g, b = v, p, q
+end
+return Color3.fromRGB(r * 255, g * 255, b * 255)
+end
+
+-- 3D Reach Circle
+local ReachCircleParts = {}
+
+local function createReachCircle()
+for _, part in pairs(ReachCircleParts) do
+if part then part:Destroy() end
+end
+ReachCircleParts = {}
+
+local numParts = 60
+local angleStep = (math.pi * 2) / numParts
+
+for i = 1, numParts do
+local angle = angleStep * i
+local part = Instance.new("Part")
+part.Name = "ReachIndicatorSegment"
+part.Size = Vector3.new(0.3, 0.3, 0.5)
+part.Material = Enum.Material.Neon
+part.Color = ReachColorNormal
+part.Transparency = 0.3
+part.CanCollide = false
+part.Anchored = true
+part.Parent = workspace
+
+table.insert(ReachCircleParts, part)
+end
+end
+
+local function updateReachCirclePosition(rootPosition)
+if #ReachCircleParts == 0 then return end
+
+local numParts = #ReachCircleParts
+local angleStep = (math.pi * 2) / numParts
+
+for i, part in ipairs(ReachCircleParts) do
+if part and part.Parent then
+local angle = angleStep * i
+local x = math.cos(angle) * ReachSize
+local z = math.sin(angle) * ReachSize
+local segmentPos = rootPosition + Vector3.new(x, -3, z)
+part.CFrame = CFrame.new(segmentPos, rootPosition + Vector3.new(0, -3, 0))
+end
+end
+end
+
+local function setReachCircleColor(color, isRainbow)
+if isRainbow then
+local numParts = #ReachCircleParts
+for i, part in ipairs(ReachCircleParts) do
+if part and part.Parent then
+local hue = ((i / numParts) + RainbowOffset) % 1
+part.Color = HSVtoRGB(hue, 1, 1)
+end
+end
+else
+for _, part in ipairs(ReachCircleParts) do
+if part and part.Parent then
+part.Color = color
+end
+end
+end
+end
+
+local function destroyReachCircle()
+for _, part in pairs(ReachCircleParts) do
+if part then part:Destroy() end
+end
+ReachCircleParts = {}
+end
+
+-- Auto Clicker Thread
+task.spawn(function()
+while true do
+if AutoClicker.Enabled then
+if AutoClicker.Button == "Left" then
+pcall(mouse1click)
+elseif AutoClicker.Button == "Right" then
+pcall(mouse2click)
+end
+task.wait(AutoClicker.Interval)
+else
+task.wait()
+end
+end
+end)
+
+-- R6 parts used for Closest Part mode
+local R6Parts = { "Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg" }
+
+-- Returns the character part closest to the FOV origin (screen position)
+local function GetClosestPart(character, originPos)
+local bestPart = nil
+local bestDist = math.huge
+for _, partName in ipairs(R6Parts) do
+local part = character:FindFirstChild(partName)
+if part then
+local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+if onScreen then
+local dist = (Vector2.new(pos.X, pos.Y) - originPos).Magnitude
+if dist < bestDist then
+bestDist = dist
+bestPart = part
+end
+end
+end
+end
+return bestPart
+end
+
+-- Returns the world position of the aim part for a player, respecting Closest Part mode
+local function GetAimPartPosition(player, originPos)
+if not player.Character then return nil end
+if AimPart == "Closest Part" then
+local part = GetClosestPart(player.Character, originPos)
+return part and part.Position or nil
+else
+local part = player.Character:FindFirstChild(AimPart)
+return part and part.Position or nil
+end
+end
+
+-- Helper Functions
+local function IsValid(plr)
+if not plr or not plr.Character or not plr.Character:FindFirstChild("Humanoid") then
+return false
+end
+local isAlive = plr.Character.Humanoid.Health > 0
+local isNotWhitelisted = not getgenv().WhitelistedPlayers[plr.Name]
+if not isAlive or not isNotWhitelisted then return false end
+-- For Closest Part, just need any R6 part to exist
+if AimPart == "Closest Part" then
+return plr.Character:FindFirstChild("Torso") ~= nil
+end
+return plr.Character:FindFirstChild(AimPart) ~= nil
+end
+
+local function IsLocalAlive()
+return LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character.Humanoid.Health > 0
+end
+
+-- [[ TARGET LOCKING ]]
+-- Single source of truth for both RenderStepped and bow hook.
+-- Behaviour:
+-- StickyAim ON → keep locked target until they leave FOV, then find new closest
+-- StickyAim OFF → always return closest to FOV center this frame, no persistence
+-- Silent Aim → FOV radius ignored, scans full screen
+-- No players in FOV → returns nil, callers fall back to real mouse
+local function FindBestTarget()
+if not IsLocalAlive() then
+LockedTarget = nil
+return nil
+end
+
+local originPos
+if AimMethod == "Mouse" then
+originPos = UserInputService:GetMouseLocation()
+else
+originPos = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+end
+
+-- All methods respect FOV radius for target selection.
+-- Silent Aim just means no camera/mouse movement on fire, not unlimited range.
+local maxDist = FOVRadius
+
+-- StickyAim ON: if we have a lock check if it's still valid and inside FOV
+if StickyAim and LockedTarget then
+if IsValid(LockedTarget) then
+local worldPos = GetAimPartPosition(LockedTarget, originPos)
+if worldPos then
+local screenPos, onScreen = Camera:WorldToViewportPoint(worldPos)
+local dist = (Vector2.new(screenPos.X, screenPos.Y) - originPos).Magnitude
+if onScreen and dist <= FOVRadius then
+return LockedTarget -- still in FOV, keep lock
+end
+end
+end
+-- Left FOV or died → drop lock and fall through to rescan
+LockedTarget = nil
+end
+
+-- Scan all players, find closest to FOV origin within maxDist
+local bestTarget = nil
+local bestDist = maxDist
+for _, player in pairs(Players:GetPlayers()) do
+if player ~= LocalPlayer and IsValid(player) then
+local worldPos = GetAimPartPosition(player, originPos)
+if worldPos then
+local screenPos, onScreen = Camera:WorldToViewportPoint(worldPos)
+if onScreen then
+local dist = (Vector2.new(screenPos.X, screenPos.Y) - originPos).Magnitude
+if dist < bestDist then
+bestDist = dist
+bestTarget = player
+end
+end
+end
+end
+end
+
+-- StickyAim ON → store lock (nil if nobody in FOV, which is intentional)
+-- StickyAim OFF → never touch LockedTarget, re-evaluate fresh every frame
+if StickyAim then
+LockedTarget = bestTarget
+end
+
+return bestTarget -- nil = nobody in FOV, caller shoots at real mouse
+end
+
+-- Build the predicted world position for a target using shared prediction settings
+local function GetPredictedPosition(target)
+local originPos = (AimMethod == "Mouse") and UserInputService:GetMouseLocation()
+or Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+local worldPos = GetAimPartPosition(target, originPos)
+if not worldPos then return nil end
+if PredictionEnabled then
+-- Get the actual part for velocity
+local part
+if AimPart == "Closest Part" then
+part = GetClosestPart(target.Character, originPos)
+else
+part = target.Character:FindFirstChild(AimPart)
+end
+if part then
+local vel = part.Velocity
+worldPos = worldPos + Vector3.new(vel.X * PredictionX, vel.Y * PredictionY, vel.Z * PredictionX)
+end
+end
+return worldPos
+end
+
+local function HookBowSilentAim(tool)
+-- Wait for ClientControl to fully replicate, not just 0.1s guess
+local clientControl = tool:FindFirstChild("ClientControl")
+if not clientControl then
+clientControl = tool.ChildAdded:Wait()
+-- Make sure we actually got ClientControl and not some other child
+if clientControl.Name ~= "ClientControl" then
+clientControl = tool:WaitForChild("ClientControl", 5)
+end
+end
+if not clientControl then return end
+
+clientControl.OnClientInvoke = function()
+if not IsLocalAlive() or not AimAssistEnabled then
+return LocalPlayer:GetMouse().Hit.p
+end
+
+local target = FindBestTarget()
+if not target then
+return LocalPlayer:GetMouse().Hit.p
+end
+
+local finalPos = GetPredictedPosition(target)
+if not finalPos then
+return LocalPlayer:GetMouse().Hit.p
+end
+
+-- Snap camera/mouse based on method
+if AimMethod == "Camera" then
+Camera.CFrame = CFrame.new(Camera.CFrame.Position, finalPos)
+elseif AimMethod == "Mouse" then
+local screenPos = Camera:WorldToViewportPoint(finalPos)
+local mPos = UserInputService:GetMouseLocation()
+pcall(function()
+mousemoverel(screenPos.X - mPos.X, screenPos.Y - mPos.Y)
+end)
+end
+-- Silent Aim: no camera/mouse movement, position goes silently to server only
+
+return finalPos
+end
+end
+
+local function WatchCharacterForBow(char)
+if not char then return end
+-- Hook tools already held on spawn
+for _, child in pairs(char:GetChildren()) do
+if child:IsA("Tool") then
+task.spawn(HookBowSilentAim, child)
+end
+end
+-- Hook tools picked up during the game
+char.ChildAdded:Connect(function(child)
+if child:IsA("Tool") then
+task.spawn(HookBowSilentAim, child)
+end
+end)
+end
+
+-- Init bow hook
+if LocalPlayer.Character then
+WatchCharacterForBow(LocalPlayer.Character)
+end
+LocalPlayer.CharacterAdded:Connect(WatchCharacterForBow)
+
+-- Main RenderLoop
+RunService.RenderStepped:Connect(function()
+local Center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+local originPos = (AimMethod == "Mouse") and UserInputService:GetMouseLocation() or Center
+
+if ShowFOV and AimAssistEnabled and IsLocalAlive() then
+FOVCircle.Position = originPos
+FOVCircle.Radius = FOVRadius
+FOVCircle.Visible = true
+else
+FOVCircle.Visible = false
+end
+
+if ShowReachIndicator and ReachEnabled and IsLocalAlive() then
+local character = LocalPlayer.Character
+local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
+
+if humanoidRootPart then
+if #ReachCircleParts == 0 then
+createReachCircle()
+end
+
+if #ReachCircleParts > 0 then
+updateReachCirclePosition(humanoidRootPart.Position)
+end
+
+local sword = character:FindFirstChildOfClass("Tool")
+local enemyInRange = false
+
+if sword and sword:FindFirstChild("Handle") then
+for _, targetPlayer in pairs(Players:GetPlayers()) do
+if targetPlayer ~= LocalPlayer and not getgenv().WhitelistedPlayers[targetPlayer.Name] then
+if targetPlayer.Character then
+local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+if targetHRP then
+local distance = (humanoidRootPart.Position - targetHRP.Position).Magnitude
+if distance <= ReachSize then
+enemyInRange = true
+break
+end
+end
+end
+end
+end
+end
+
+RainbowOffset = RainbowOffset + 0.01
+if RainbowOffset > 1 then RainbowOffset = 0 end
+
+if enemyInRange then
+setReachCircleColor(ReachColorActive, RainbowActive)
+else
+setReachCircleColor(ReachColorNormal, RainbowNormal)
+end
+else
+destroyReachCircle()
+end
+else
+destroyReachCircle()
+end
+
+if AimAssistEnabled and IsLocalAlive() then
+
+local target = FindBestTarget()
+
+if target then
+local finalTargetPos = GetPredictedPosition(target)
+if finalTargetPos then
+if AimMethod == "Camera" then
+Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, finalTargetPos), AimSmoothness)
+elseif AimMethod == "Mouse" then
+local screenPos = Camera:WorldToViewportPoint(finalTargetPos)
+local mPos = UserInputService:GetMouseLocation()
+mousemoverel((screenPos.X - mPos.X) * AimSmoothness, (screenPos.Y - mPos.Y) * AimSmoothness)
+end
+-- Silent Aim: no per-frame movement, only activates on bow fire via hook
+end
+end
+else
+-- Aim assist off — clear lock so bow falls back to real mouse
+LockedTarget = nil
+end
+end)
+
+-- Reach Mechanic (visual decoy + invisible real hitbox)
+RunService.Stepped:Connect(function()
+if not ReachEnabled then
+CleanupAllReachDecoys()
+return
+end
+
+if not IsLocalAlive() then
+CleanupAllReachDecoys()
+return
+end
+
+local character = LocalPlayer.Character
+local humanoidRootPart = character and character:FindFirstChild("HumanoidRootPart")
+if not humanoidRootPart then
+CleanupAllReachDecoys()
+return
+end
+
+-- playersInRange is declared OUTSIDE the pcall so it always exists for cleanup
+local playersInRange = {}
+local hasSword = false
+
+-- Setup / Update block (may error, that's fine – cleanup will still run)
+local success, err = pcall(function()
+local sword = character:FindFirstChildOfClass("Tool")
+hasSword = sword and sword:FindFirstChild("Handle") ~= nil
+
+if hasSword then
+for _, targetPlayer in pairs(Players:GetPlayers()) do
+if targetPlayer ~= LocalPlayer and not getgenv().WhitelistedPlayers[targetPlayer.Name] then
+local targetCharacter = targetPlayer.Character
+if targetCharacter and targetCharacter:FindFirstChild("Left Arm") then
+local rightLeg = GetTargetRightLeg(targetCharacter)
+local targetHRP = targetCharacter:FindFirstChild("HumanoidRootPart")
+
+if rightLeg and targetHRP then
+local distance = (humanoidRootPart.Position - targetHRP.Position).Magnitude
+if distance <= ReachSize then
+playersInRange[targetPlayer] = true
+
+if not ReachDecoys[targetPlayer] then
+if rightLeg.Name == "Right Leg" then
+SetupReachDecoy(targetPlayer, targetCharacter, rightLeg)
+end
+end
+
+UpdateReachDecoyPosition(targetPlayer, humanoidRootPart)
+end
+end
+end
+end
+end
+end
+end)
+
+-- CRITICAL: cleanup ALWAYS runs, even if the block above threw an error
+for player, _ in pairs(ReachDecoys) do
+if not playersInRange[player] then
+CleanupReachDecoy(player)
+end
+end
+
+-- (Tank only – desync removed, moved to RakNet hook)
+if IsLocalAlive() then
+if TankActive then
+LocalPlayer.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+LocalPlayer.Character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+end
+-- [[ DESYNC REMOVED – replaced by RakNet packet hook ]]
+end
+end)
+
+-- UI TABS
+
+-- MAIN TAB
+Tabs.Main:AddParagraph({ Title = "Reach Engine", Content = "⚔️ Sword-Based Reach (Must Hold Sword!)\n🔵 Circle shows reach range at your feet" })
+
+local ToggleEnableReach = Tabs.Main:AddToggle("EnableReach", { Title = "Enable Reach", Default = true })
+ToggleEnableReach:OnChanged(function(v)
+ReachEnabled = v
+if not v then CleanupAllReachDecoys() end
+end)
+
+local ReachSlider = Tabs.Main:AddSlider("ReachSize", {
+Title = "Reach Size",
+Description = "Distance to teleport enemy leg",
+Default = 8, Min = 2, Max = 20, Rounding = 1,
+Callback = function(v)
+ReachSize = v
+if ShowReachIndicator and ReachEnabled then destroyReachCircle() end
+end
+})
+
+Tabs.Main:AddInput("ReachInput", {
+Title = "Reach Size (Manual)", Default = "8", Placeholder = "Enter reach size...",
+Numeric = true, Finished = true,
+Callback = function(v)
+local num = tonumber(v)
+if num and num >= 2 and num <= 20 then
+ReachSize = num
+ReachSlider:SetValue(num)
+if ShowReachIndicator and ReachEnabled then destroyReachCircle() end
+end
+end
+})
+
+local ToggleShowReach = Tabs.Main:AddToggle("ShowReachIndicator", { Title = "Show Reach Indicator", Default = true })
+ToggleShowReach:OnChanged(function(v)
+ShowReachIndicator = v
+if not v then destroyReachCircle() end
+end)
+
+local DropdownNormalColor = Tabs.Main:AddDropdown("NormalColor", { Title = "Normal Color", Values = {"White","Red","Blue","Yellow","Purple","Cyan","Orange","Rainbow"}, Default = 1 })
+DropdownNormalColor:OnChanged(function(v)
+if v == "Rainbow" then RainbowNormal = true
+else
+RainbowNormal = false
+if v == "White" then ReachColorNormal = Color3.fromRGB(255,255,255)
+elseif v == "Red" then ReachColorNormal = Color3.fromRGB(255,0,0)
+elseif v == "Blue" then ReachColorNormal = Color3.fromRGB(0,100,255)
+elseif v == "Yellow" then ReachColorNormal = Color3.fromRGB(255,255,0)
+elseif v == "Purple" then ReachColorNormal = Color3.fromRGB(200,0,255)
+elseif v == "Cyan" then ReachColorNormal = Color3.fromRGB(0,255,255)
+elseif v == "Orange" then ReachColorNormal = Color3.fromRGB(255,150,0)
+end
+end
+end)
+
+local DropdownActiveColor = Tabs.Main:AddDropdown("ActiveColor", { Title = "Enemy In Range Color", Values = {"Green","Red","Blue","Yellow","Purple","Cyan","Orange","White","Rainbow"}, Default = 1 })
+DropdownActiveColor:OnChanged(function(v)
+if v == "Rainbow" then RainbowActive = true
+else
+RainbowActive = false
+if v == "Green" then ReachColorActive = Color3.fromRGB(0,255,0)
+elseif v == "Red" then ReachColorActive = Color3.fromRGB(255,0,0)
+elseif v == "Blue" then ReachColorActive = Color3.fromRGB(0,100,255)
+elseif v == "Yellow" then ReachColorActive = Color3.fromRGB(255,255,0)
+elseif v == "Purple" then ReachColorActive = Color3.fromRGB(200,0,255)
+elseif v == "Cyan" then ReachColorActive = Color3.fromRGB(0,255,255)
+elseif v == "Orange" then ReachColorActive = Color3.fromRGB(255,150,0)
+elseif v == "White" then ReachColorActive = Color3.fromRGB(255,255,255)
+end
+end
+end)
+
+local ToggleTank = Tabs.Main:AddToggle("UltraTank", { Title = "Ultra Tank", Default = false })
+ToggleTank:OnChanged(function(v) TankActive = v end)
+
+local ToggleDesync = Tabs.Main:AddToggle("Desync", { Title = "Desync", Default = false })
+ToggleDesync:OnChanged(function(v) DesyncActive = v end)
+
+-- PLAYERS TAB
+local function GetNames()
+local n = {}
+for _, p in pairs(Players:GetPlayers()) do
+if p ~= LocalPlayer then table.insert(n, p.Name) end
+end
+if #n == 0 then table.insert(n, "No players") end
+return n
+end
+
+local PlayerDropdown = Tabs.Players:AddDropdown("PlayerSelect", {
+Title = "Select Player",
+Values = GetNames(),
+Default = 1
+})
+
+PlayerDropdown:OnChanged(function(v)
+if v ~= "No players" then
+getgenv().SelectedTarget = v
+end
+end)
+
+Tabs.Players:AddButton({ Title = "Refresh Player List", Description = "Re-scans for players (use when someone joins)", Callback = function()
+local names = GetNames()
+-- Fluent dropdown refresh: SetValues rebuilds the list
+pcall(function() PlayerDropdown:SetValues(names) end)
+-- Fallback: manually update the internal options if SetValues isn't supported
+pcall(function()
+for _, btn in pairs(PlayerDropdown.Dropdown:GetChildren()) do
+if btn:IsA("TextButton") then btn:Destroy() end
+end
+PlayerDropdown.Value = names[1]
+for _, name in ipairs(names) do
+local opt = Instance.new("TextButton")
+opt.Text = name
+opt.Parent = PlayerDropdown.Dropdown
+end
+end)
+if NotificationsEnabled then
+Fluent:Notify({ Title = "Player List", Content = "Refreshed — " .. (#names == 1 and names[1] == "No players" and "0" or tostring(#names)) .. " player(s) found.", Duration = 2 })
+end
+end })
+
+Tabs.Players:AddButton({ Title = "Whitelist Selected", Callback = function()
+if getgenv().SelectedTarget then
+getgenv().WhitelistedPlayers[getgenv().SelectedTarget] = true
+local whitelistedPlayer = Players:FindFirstChild(getgenv().SelectedTarget)
+if whitelistedPlayer then CleanupReachDecoy(whitelistedPlayer) end
+if NotificationsEnabled then
+Fluent:Notify({ Title = "Whitelisted", Content = getgenv().SelectedTarget .. " is now safe.", Duration = 2 })
+end
+end
+end })
+
+Tabs.Players:AddButton({ Title = "Unwhitelist Selected", Callback = function()
+if getgenv().SelectedTarget then
+getgenv().WhitelistedPlayers[getgenv().SelectedTarget] = nil
+end
+end })
+
+Tabs.Players:AddButton({ Title = "Teleport Behind", Callback = function()
+local t = Players:FindFirstChild(getgenv().SelectedTarget or "")
+if t and t.Character then
+LocalPlayer.Character.HumanoidRootPart.CFrame = t.Character.HumanoidRootPart.CFrame * CFrame.new(0,0,3)
+end
+end })
+
+Tabs.Players:AddButton({ Title = "Spectate", Callback = function()
+local t = Players:FindFirstChild(getgenv().SelectedTarget or "")
+if t and t.Character then Camera.CameraSubject = t.Character.Humanoid end
+end })
+
+Tabs.Players:AddButton({ Title = "Stop Spectating", Callback = function()
+Camera.CameraSubject = LocalPlayer.Character.Humanoid
+end })
+
+-- AIM ASSIST TAB
+local ToggleEnableAim = Tabs.Aim:AddToggle("EnableAim", { Title = "Enable Aim Assist", Default = false })
+ToggleEnableAim:OnChanged(function(v) AimAssistEnabled = v end)
+
+local ToggleStickyAim = Tabs.Aim:AddToggle("StickyAim", { Title = "Sticky Aim", Default = false })
+ToggleStickyAim:OnChanged(function(v) StickyAim = v end)
+
+local AimKeybind = Tabs.Aim:AddKeybind("AimKeybind", {
+Title = "Toggle Key", Mode = "Toggle", Default = "Q",
+Callback = function() AimAssistEnabled = not AimAssistEnabled end,
+ChangedCallback = function() end
+})
+
+local DropdownAimMethod = Tabs.Aim:AddDropdown("AimMethod", { Title = "Aim Method", Values = {"Camera","Mouse","Silent Aim"}, Default = 1 })
+DropdownAimMethod:OnChanged(function(v) AimMethod = v end)
+
+local DropdownAimPart = Tabs.Aim:AddDropdown("AimPart", { Title = "Aim Part", Values = {"Head","Torso","HumanoidRootPart","Closest Part"}, Default = 3 })
+DropdownAimPart:OnChanged(function(v) AimPart = v end)
+
+local TogglePrediction = Tabs.Aim:AddToggle("EnablePrediction", { Title = "Enable Prediction", Default = false })
+TogglePrediction:OnChanged(function(v) PredictionEnabled = v end)
+
+local PredXSlider = Tabs.Aim:AddSlider("PredictionX", {
+Title = "Prediction X", Description = "Horizontal prediction value",
+Default = 0.165, Min = 0, Max = 1, Rounding = 3,
+Callback = function(v) PredictionX = v end
+})
+
+Tabs.Aim:AddInput("PredXInput", {
+Title = "Prediction X (Manual)", Default = "0.165", Placeholder = "0.000 - 1.000",
+Numeric = true, Finished = true,
+Callback = function(v)
+local num = tonumber(v)
+if num and num >= 0 and num <= 1 then PredictionX = num; PredXSlider:SetValue(num) end
+end
+})
+
+local PredYSlider = Tabs.Aim:AddSlider("PredictionY", {
+Title = "Prediction Y", Description = "Vertical prediction value",
+Default = 0.165, Min = 0, Max = 1, Rounding = 3,
+Callback = function(v) PredictionY = v end
+})
+
+Tabs.Aim:AddInput("PredYInput", {
+Title = "Prediction Y (Manual)", Default = "0.165", Placeholder = "0.000 - 1.000",
+Numeric = true, Finished = true,
+Callback = function(v)
+local num = tonumber(v)
+if num and num >= 0 and num <= 1 then PredictionY = num; PredYSlider:SetValue(num) end
+end
+})
+
+local ToggleShowFOV = Tabs.Aim:AddToggle("ShowFOV", { Title = "Show FOV", Default = true })
+ToggleShowFOV:OnChanged(function(v) ShowFOV = v end)
+
+local FOVSlider = Tabs.Aim:AddSlider("FOVRadius", {
+Title = "FOV Radius", Default = 100, Min = 30, Max = 800, Rounding = 0,
+Callback = function(v) FOVRadius = v end
+})
+
+Tabs.Aim:AddInput("FOVInput", {
+Title = "FOV Radius (Manual)", Default = "100", Placeholder = "30 - 800",
+Numeric = true, Finished = true,
+Callback = function(v)
+local num = tonumber(v)
+if num and num >= 30 and num <= 800 then FOVRadius = num; FOVSlider:SetValue(num) end
+end
+})
+
+local SmoothnessSlider = Tabs.Aim:AddSlider("Smoothness", {
+Title = "Smoothness", Description = "Lower = faster aim",
+Default = 0.15, Min = 0.01, Max = 1, Rounding = 2,
+Callback = function(v) AimSmoothness = v end
+})
+
+Tabs.Aim:AddInput("SmoothnessInput", {
+Title = "Smoothness (Manual)",
+Default = "0.15",
+Placeholder = "0.01 - 1.00",
+Numeric = true,
+Finished = true,
+Callback = function(v)
+local num = tonumber(v)
+if num and num >= 0.01 and num <= 1 then
+AimSmoothness = num
+SmoothnessSlider:SetValue(num)
+end
+end
+})
+
+
+
+-- AUTO CLICKER TAB
+local ToggleEnableClicker = Tabs.Clicker:AddToggle("EnableClicker", { Title = "Enable Clicker", Default = false })
+ToggleEnableClicker:OnChanged(function(v) AutoClicker.Enabled = v end)
+
+local ClickerKeybind = Tabs.Clicker:AddKeybind("ClickerKeybind", {
+Title = "Toggle Bind", Mode = "Toggle", Default = "C",
+Callback = function() AutoClicker.Enabled = not AutoClicker.Enabled end,
+ChangedCallback = function() end
+})
+
+local DropdownMouseButton = Tabs.Clicker:AddDropdown("MouseButton", { Title = "Mouse Button", Values = {"Left","Right"}, Default = 1 })
+DropdownMouseButton:OnChanged(function(v) AutoClicker.Button = v end)
+
+local IntervalSlider = Tabs.Clicker:AddSlider("ClickInterval", {
+Title = "Interval (Seconds)",
+Description = "Time between clicks",
+Default = 0.1,
+Min = 0.01,
+Max = 1,
+Rounding = 2,
+Callback = function(v)
+AutoClicker.Interval = v
+end
+})
+
+Tabs.Clicker:AddInput("IntervalInput", {
+Title = "Interval (Manual)",
+Default = "0.1",
+Placeholder = "0.01 - 1.00",
+Numeric = true,
+Finished = true,
+Callback = function(v)
+local num = tonumber(v)
+if num and num >= 0.01 and num <= 1 then
+AutoClicker.Interval = num
+IntervalSlider:SetValue(num)
+end
+end
+})
+
+-- CHAT LOGGER TAB
+local ChatMessages = {}
+local ChatSearchQuery = ""
+
+Tabs.ChatLogger:AddInput("ChatSearch", {
+Title = "Search Messages",
+Placeholder = "Type to filter...",
+Numeric = false,
+Finished = false,
+Callback = function(v)
+ChatSearchQuery = v or ""
+RenderChatDisplay()
+end
+})
+
+Tabs.ChatLogger:AddButton({
+Title = "Clear Chat Log",
+Description = "Wipes all stored messages",
+Callback = function()
+ChatMessages = {}
+ChatSearchQuery = ""
+if NotificationsEnabled then
+Fluent:Notify({ Title = "Chat Logger", Content = "Log cleared.", Duration = 2 })
+end
+end
+})
+
+local ChatDisplayParagraph = Tabs.ChatLogger:AddParagraph({
+Title = "Messages",
+Content = "No messages yet."
+})
+
+local function RenderChatDisplay()
+local filtered = {}
+local query = ChatSearchQuery:lower()
+for _, msg in ipairs(ChatMessages) do
+if query == "" or msg:lower():find(query, 1, true) then
+table.insert(filtered, msg)
+end
+end
+local display = #filtered > 0
+and table.concat(filtered, "\n")
+or (query ~= "" and "No messages match your search." or "No messages yet.")
+pcall(function()
+ChatDisplayParagraph:SetDesc(display)
+end)
+end
+
+local function LogMessage(msg, author)
+table.insert(ChatMessages, "[" .. author .. "]: " .. msg)
+RenderChatDisplay()
+end
+
+for _, player in pairs(Players:GetPlayers()) do
+player.Chatted:Connect(function(msg) LogMessage(msg, player.Name) end)
+end
+Players.PlayerAdded:Connect(function(player)
+player.Chatted:Connect(function(msg) LogMessage(msg, player.Name) end)
+end)
+
+-- CUSTOMIZE TAB
+
+Tabs.Customize:AddToggle("Notifications", {
+Title = "Notifications",
+Description = "Enable/disable script notifications",
+Default = true
+}):OnChanged(function(v)
+NotificationsEnabled = v
+if v then
+Fluent:Notify({
+Title = "Notifications",
+Content = "Notifications enabled",
+Duration = 2
+})
+end
+end)
+
+local UIKeybind = Tabs.Customize:AddKeybind("UIKeybind", {
+Title = "UI Toggle Keybind",
+Mode = "Toggle",
+Default = "LeftControl",
+Callback = function(Value)
+pcall(function() Window:Minimize() end)
+pcall(function() Window:Toggle() end)
+end,
+ChangedCallback = function(New) end
+})
+
+Tabs.Customize:AddButton({
+Title = "Clear Console",
+Description = "Clears the F9 console log completely",
+Callback = function()
+local cleared = false
+pcall(function() if clearconsole then clearconsole() cleared = true end end)
+pcall(function() if clear then clear() cleared = true end end)
+pcall(function() if rconsoleclear then rconsoleclear() cleared = true end end)
+pcall(function() if consoleclear then consoleclear() cleared = true end end)
+pcall(function()
+local CoreGui = game:GetService("CoreGui")
+local DevConsole = CoreGui:FindFirstChild("DevConsoleMaster")
+if DevConsole then
+local LogWindow = DevConsole:FindFirstChild("DevConsoleWindow")
+if LogWindow then
+LogWindow:FindFirstChild("MainView"):ClearAllChildren()
+cleared = true
+end
+end
+end)
+pcall(function() game:GetService("LogService"):ClearOutput() cleared = true end)
+
+if NotificationsEnabled then
+Fluent:Notify({
+Title = cleared and "Console Cleared" or "Clear Attempted",
+Content = cleared and "F9 console has been cleared!" or "Your executor may not support this.",
+Duration = 2
+})
+end
+end
+})
+
+Tabs.Customize:AddSection("User Information")
+
+local userId = LocalPlayer.UserId
+
+Tabs.Customize:AddParagraph({
+Title = "Profile",
+Content = "Username: @" .. LocalPlayer.Name .. "\nDisplay Name: " .. LocalPlayer.DisplayName .. "\nUser ID: " .. userId .. "\nAccount Age: " .. LocalPlayer.AccountAge .. " days"
+})
+
+Tabs.Customize:AddButton({
+Title = "Open Roblox Profile",
+Description = "Copies your profile link to clipboard",
+Callback = function()
+local profileUrl = "https://www.roblox.com/users/" .. userId .. "/profile"
+setclipboard(profileUrl)
+if NotificationsEnabled then
+Fluent:Notify({
+Title = "Profile Link",
+Content = "Profile link copied to clipboard!",
+Duration = 3
+})
+end
+end
+})
+
+-- CONFIG TAB
+
+-- ApplyConfigData is defined below after all UI widget refs are created
+
+-- [[ CONFIG SYSTEM ]]
+-- Folder stored in %appdata%\73829100\ (hidden from casual users)
+-- File names are XOR-encrypted with a key so they look like gibberish on disk
+-- The real (decrypted) name is what the user types — shown in the UI
+
+local CONFIG_FOLDER = (function()
+-- Get %appdata% path via Velocity's getspecialfolders or fallback methods
+local appdata = nil
+pcall(function()
+-- Velocity exposes this
+appdata = getspecialfolders and getspecialfolders().appdata
+end)
+pcall(function()
+if not appdata then
+-- Synapse / general fallback via readfile on a known path
+appdata = getspecialfolders and getspecialfolders().RoamingAppData
+end
+end)
+pcall(function()
+if not appdata then
+-- Try querying environment via Velocity's executor env
+appdata = getenv and getenv("APPDATA")
+end
+end)
+if appdata then
+return appdata .. "\\73829100"
+end
+-- Last resort fallback: executor workspace subfolder
+return "73829100"
+end)()
+local CONFIG_KEY = 0x4A -- single-byte XOR key for filename encryption
+
+-- XOR encrypt/decrypt a string (same operation both ways)
+local function XORString(str)
+local result = {}
+for i = 1, #str do
+result[i] = string.char(bit32.bxor(string.byte(str, i), CONFIG_KEY))
+end
+return table.concat(result)
+end
+
+-- Convert string to hex so the filename is printable on disk
+local function ToHex(str)
+local hex = {}
+for i = 1, #str do
+hex[i] = string.format("%02x", string.byte(str, i))
+end
+return table.concat(hex)
+end
+
+-- Convert hex back to string
+local function FromHex(hex)
+local str = {}
+for i = 1, #hex, 2 do
+str[#str + 1] = string.char(tonumber(hex:sub(i, i + 1), 16))
+end
+return table.concat(str)
+end
+
+-- Encrypt a display name → disk filename (e.g. "myconfig" → "3c2b1e...")
+local function EncryptName(displayName)
+return ToHex(XORString(displayName)) .. ".json"
+end
+
+-- Decrypt a disk filename → display name (e.g. "3c2b1e....json" → "myconfig")
+local function DecryptName(fileName)
+local hex = fileName:gsub("%.json$", "")
+local ok, result = pcall(function() return XORString(FromHex(hex)) end)
+return ok and result or fileName -- fallback to raw name if corrupt
+end
+
+local function EnsureFolder()
+pcall(function()
+if not isfolder(CONFIG_FOLDER) then
+makefolder(CONFIG_FOLDER)
+end
+end)
+end
+
+local function GetConfigData()
+-- Each section maps to a tab in the UI.
+-- Keys match exactly what ApplyConfigData reads back.
+-- Edit values manually in the JSON — strings, numbers, booleans only.
+return {
+
+-- ============================================================
+-- REACH
+-- Tab: Main
+-- ============================================================
+Reach = {
+Enabled = ReachEnabled, -- true / false
+Size = ReachSize, -- 2 – 20
+ShowIndicator = ShowReachIndicator, -- true / false
+IndicatorColorNormal = (function() -- "White","Red","Blue","Yellow","Purple","Cyan","Orange","Rainbow"
+if RainbowNormal then return "Rainbow" end
+return DropdownNormalColor and DropdownNormalColor.Value or "White"
+end)(),
+IndicatorColorActive = (function() -- "Green","Red","Blue","Yellow","Purple","Cyan","Orange","White","Rainbow"
+if RainbowActive then return "Rainbow" end
+return DropdownActiveColor and DropdownActiveColor.Value or "Green"
+end)(),
+},
+
+-- ============================================================
+-- COMBAT
+-- Tab: Main
+-- ============================================================
+Combat = {
+UltraTank = TankActive, -- true / false
+Desync = DesyncActive, -- true / false
+},
+
+-- ============================================================
+-- AIM ASSIST
+-- Tab: Aim Assist
+-- ============================================================
+AimAssist = {
+Enabled = AimAssistEnabled, -- true / false
+StickyAim = StickyAim, -- true / false
+Method = AimMethod, -- "Camera" / "Mouse" / "Silent Aim"
+AimPart = AimPart, -- "Head" / "Torso" / "HumanoidRootPart" / "Closest Part"
+Smoothness = AimSmoothness, -- 0.01 – 1.00 (lower = faster)
+ShowFOV = ShowFOV, -- true / false
+FOVRadius = FOVRadius, -- 30 – 800
+},
+
+-- ============================================================
+-- PREDICTION
+-- Tab: Aim Assist
+-- ============================================================
+Prediction = {
+Enabled = PredictionEnabled, -- true / false
+X = PredictionX, -- 0.000 – 1.000
+Y = PredictionY, -- 0.000 – 1.000
+},
+
+-- ============================================================
+-- AUTO CLICKER
+-- Tab: Auto Clicker
+-- ============================================================
+AutoClicker = {
+Enabled = AutoClicker.Enabled, -- true / false
+Button = AutoClicker.Button, -- "Left" / "Right"
+Interval = AutoClicker.Interval, -- 0.01 – 1.00 seconds
+},
+
+-- ============================================================
+-- UI / PREFERENCES
+-- Tab: Customize
+-- ============================================================
+UI = {
+Notifications = NotificationsEnabled, -- true / false
+},
+}
+end
+
+-- ApplyConfigData defined here — all widget refs declared above are in scope
+local function ApplyConfigData(data)
+local function sv(widget, val)
+if val ~= nil and widget then pcall(function() widget:SetValue(val) end) end
+end
+
+-- Support both old flat format and new nested format
+local reach = data.Reach or {}
+local combat = data.Combat or {}
+local aim = data.AimAssist or {}
+local pred = data.Prediction or {}
+local clicker = data.AutoClicker or {}
+local ui = data.UI or {}
+
+-- ── REACH ────────────────────────────────────────────────────────
+if reach.Enabled ~= nil then ReachEnabled = reach.Enabled end
+if reach.Size ~= nil then ReachSize = reach.Size end
+if reach.ShowIndicator ~= nil then ShowReachIndicator = reach.ShowIndicator end
+if reach.IndicatorColorNormal ~= nil then
+RainbowNormal = (reach.IndicatorColorNormal == "Rainbow")
+end
+if reach.IndicatorColorActive ~= nil then
+RainbowActive = (reach.IndicatorColorActive == "Rainbow")
+end
+
+sv(ToggleEnableReach, reach.Enabled)
+sv(ReachSlider, reach.Size)
+sv(ToggleShowReach, reach.ShowIndicator)
+sv(DropdownNormalColor, reach.IndicatorColorNormal)
+sv(DropdownActiveColor, reach.IndicatorColorActive)
+
+-- ── COMBAT ───────────────────────────────────────────────────────
+if combat.UltraTank ~= nil then TankActive = combat.UltraTank end
+if combat.Desync ~= nil then DesyncActive = combat.Desync end
+
+sv(ToggleTank, combat.UltraTank)
+sv(ToggleDesync, combat.Desync)
+
+-- ── AIM ASSIST ───────────────────────────────────────────────────
+if aim.Enabled ~= nil then AimAssistEnabled = aim.Enabled end
+if aim.StickyAim ~= nil then StickyAim = aim.StickyAim end
+if aim.Method ~= nil then AimMethod = aim.Method end
+if aim.AimPart ~= nil then AimPart = aim.AimPart end
+if aim.Smoothness ~= nil then AimSmoothness = aim.Smoothness end
+if aim.ShowFOV ~= nil then ShowFOV = aim.ShowFOV end
+if aim.FOVRadius ~= nil then FOVRadius = aim.FOVRadius end
+
+sv(ToggleEnableAim, aim.Enabled)
+sv(ToggleStickyAim, aim.StickyAim)
+sv(DropdownAimMethod, aim.Method)
+sv(DropdownAimPart, aim.AimPart)
+sv(SmoothnessSlider, aim.Smoothness)
+sv(ToggleShowFOV, aim.ShowFOV)
+sv(FOVSlider, aim.FOVRadius)
+
+-- ── PREDICTION ───────────────────────────────────────────────────
+if pred.Enabled ~= nil then PredictionEnabled = pred.Enabled end
+if pred.X ~= nil then PredictionX = pred.X end
+if pred.Y ~= nil then PredictionY = pred.Y end
+
+sv(TogglePrediction, pred.Enabled)
+sv(PredXSlider, pred.X)
+sv(PredYSlider, pred.Y)
+
+-- ── AUTO CLICKER ─────────────────────────────────────────────────
+if clicker.Enabled ~= nil then AutoClicker.Enabled = clicker.Enabled end
+if clicker.Button ~= nil then AutoClicker.Button = clicker.Button end
+if clicker.Interval ~= nil then AutoClicker.Interval = clicker.Interval end
+
+sv(ToggleEnableClicker, clicker.Enabled)
+sv(DropdownMouseButton, clicker.Button)
+sv(IntervalSlider, clicker.Interval)
+
+-- ── UI ───────────────────────────────────────────────────────────
+if ui.Notifications ~= nil then NotificationsEnabled = ui.Notifications end
+end
+
+-- Read all configs from folder and return list of {display, file} pairs
+local function GetConfigList()
+local list = {}
+pcall(function()
+EnsureFolder()
+local files = listfiles(CONFIG_FOLDER)
+for _, path in ipairs(files) do
+local fileName = path:match("([^/\\]+)$") -- basename
+if fileName and fileName:match("%.json$") then
+local display = DecryptName(fileName)
+table.insert(list, { display = display, file = fileName })
+end
+end
+end)
+return list
+end
+
+-- State
+local CurrentConfigName = "none"
+local ConfigNameInput = ""
+
+-- UI paragraphs we need to update
+local CurrentConfigLabel
+local ConfigListLabel
+
+local function RefreshConfigListLabel()
+local list = GetConfigList()
+if #list == 0 then
+pcall(function() ConfigListLabel:SetDesc("No configs saved yet.") end)
+return
+end
+local lines = {}
+for _, entry in ipairs(list) do
+table.insert(lines, entry.display .. " → " .. entry.file)
+end
+pcall(function() ConfigListLabel:SetDesc(table.concat(lines, "\n")) end)
+end
+
+local function SetCurrentConfig(name)
+CurrentConfigName = name
+pcall(function() CurrentConfigLabel:SetDesc(name) end)
+end
+
+-- UI LAYOUT
+
+Tabs.Config:AddSection("Active Config")
+
+CurrentConfigLabel = Tabs.Config:AddParagraph({
+Title = "Current Config",
+Content = CurrentConfigName
+})
+
+Tabs.Config:AddSection("Save Config")
+
+Tabs.Config:AddInput("ConfigNameInput", {
+Title = "Config Name",
+Placeholder = "Enter config name...",
+Numeric = false,
+Finished = true,
+Callback = function(v)
+ConfigNameInput = v or ""
+end
+})
+
+Tabs.Config:AddButton({
+Title = "Save Config",
+Description = "Saves current settings to an encrypted file",
+Callback = function()
+local name = ConfigNameInput
+if not name or name == "" then
+Fluent:Notify({ Title = "Config", Content = "Enter a config name first.", Duration = 3 })
+return
+end
+
+EnsureFolder()
+local fileName = EncryptName(name)
+local filePath = CONFIG_FOLDER .. "\\" .. fileName
+local data = GetConfigData()
+
+-- Pretty-print manually so the file is human-readable
+local function indent(n) return string.rep(" ", n) end
+local function encodeValue(v)
+if type(v) == "boolean" then return tostring(v)
+elseif type(v) == "number" then return tostring(v)
+elseif type(v) == "string" then return '"' .. v:gsub('"', '\\"') .. '"'
+else return '"?"' end
+end
+local lines = {"{"}
+local sections = {"Reach","Combat","AimAssist","Prediction","AutoClicker","UI"}
+for si, section in ipairs(sections) do
+local block = data[section]
+if block then
+table.insert(lines, indent(1) .. '"' .. section .. '": {')
+local keys = {}
+for k in pairs(block) do table.insert(keys, k) end
+table.sort(keys)
+for ki, k in ipairs(keys) do
+local comma = (ki < #keys) and "," or ""
+table.insert(lines, indent(2) .. '"' .. k .. '": ' .. encodeValue(block[k]) .. comma)
+end
+local sectionComma = (si < #sections) and "," or ""
+table.insert(lines, indent(1) .. "}" .. sectionComma)
+end
+end
+table.insert(lines, "}")
+local jsonStr = table.concat(lines, "\n")
+
+local ok, err = pcall(function()
+writefile(filePath, jsonStr)
+end)
+
+if ok then
+SetCurrentConfig(name)
+RefreshConfigDropdown()
+if NotificationsEnabled then
+Fluent:Notify({ Title = "Config Saved", Content = "\"" .. name .. "\" saved successfully.", Duration = 3 })
+end
+else
+Fluent:Notify({ Title = "Save Failed", Content = tostring(err), Duration = 4 })
+end
+end
+})
+
+Tabs.Config:AddSection("Load Config")
+
+-- Dropdown populated from folder contents
+local ConfigDropdown = Tabs.Config:AddDropdown("ConfigSelect", {
+Title = "Select Config",
+Values = { "No configs found" },
+Default = 1,
+})
+
+local SelectedConfigEntry = nil
+
+ConfigDropdown:OnChanged(function(v)
+-- Find the matching entry so we have the encrypted filename ready
+local list = GetConfigList()
+for _, entry in ipairs(list) do
+if entry.display == v then
+SelectedConfigEntry = entry
+return
+end
+end
+SelectedConfigEntry = nil
+end)
+
+local function RefreshConfigDropdown()
+local list = GetConfigList()
+local names = {}
+for _, entry in ipairs(list) do
+table.insert(names, entry.display)
+end
+if #names == 0 then
+names = { "No configs found" }
+SelectedConfigEntry = nil
+end
+pcall(function() ConfigDropdown:SetValues(names) end)
+-- Also refresh the list label below
+RefreshConfigListLabel()
+end
+
+Tabs.Config:AddButton({
+Title = "Refresh Config List",
+Description = "Rescans the folder for saved configs",
+Callback = function()
+RefreshConfigDropdown()
+if NotificationsEnabled then
+local list = GetConfigList()
+Fluent:Notify({ Title = "Config", Content = "Found " .. #list .. " config(s).", Duration = 2 })
+end
+end
+})
+
+Tabs.Config:AddButton({
+Title = "Load Selected Config",
+Description = "Loads the config chosen in the dropdown above",
+Callback = function()
+if not SelectedConfigEntry then
+Fluent:Notify({ Title = "Config", Content = "Select a config from the dropdown first.", Duration = 3 })
+return
+end
+local filePath = CONFIG_FOLDER .. "\\" .. SelectedConfigEntry.file
+local ok, result = pcall(function() return readfile(filePath) end)
+if not ok then
+Fluent:Notify({ Title = "Load Failed", Content = "Could not read file.", Duration = 3 })
+return
+end
+local parsed, parseErr = pcall(function()
+ApplyConfigData(HttpService:JSONDecode(result))
+end)
+if parsed then
+SetCurrentConfig(SelectedConfigEntry.display)
+if NotificationsEnabled then
+Fluent:Notify({ Title = "Config Loaded", Content = "\"" .. SelectedConfigEntry.display .. "\" loaded.", Duration = 3 })
+end
+else
+Fluent:Notify({ Title = "Parse Failed", Content = tostring(parseErr), Duration = 4 })
+end
+end
+})
+
+Tabs.Config:AddButton({
+Title = "Delete Selected Config",
+Description = "Permanently deletes the selected config file",
+Callback = function()
+if not SelectedConfigEntry then
+Fluent:Notify({ Title = "Config", Content = "Select a config from the dropdown first.", Duration = 3 })
+return
+end
+local filePath = CONFIG_FOLDER .. "\\" .. SelectedConfigEntry.file
+local ok = pcall(function() delfile(filePath) end)
+if ok then
+if CurrentConfigName == SelectedConfigEntry.display then SetCurrentConfig("none") end
+SelectedConfigEntry = nil
+RefreshConfigDropdown()
+if NotificationsEnabled then
+Fluent:Notify({ Title = "Config Deleted", Content = "Config deleted.", Duration = 3 })
+end
+else
+Fluent:Notify({ Title = "Delete Failed", Content = "File not found or already deleted.", Duration = 3 })
+end
+end
+})
+
+Tabs.Config:AddSection("Saved Configs")
+
+ConfigListLabel = Tabs.Config:AddParagraph({
+Title = "Config Files ( name → encrypted filename )",
+Content = "Press refresh to scan folder."
+})
+
+Tabs.Config:AddButton({
+Title = "Refresh Config List",
+Callback = function()
+RefreshConfigListLabel()
+end
+})
+
+-- Auto-populate dropdown on load
+RefreshConfigDropdown()
+
+-- BYPASS TAB
+Tabs.Bypass:AddParagraph({
+Title = "Bypass",
+Content = "Bypass features will be added here."
+})
+
+-- CHANGELOG TAB
+local changelogText = [[
+v6.3: Bow Silent Aim - Unified Engine
+
+- Silent aim now fully shares aim assist config:
+* Respects AimMethod (Camera snaps, Mouse warps on fire)
+* Respects AimPart (Head / Torso / HumanoidRootPart)
+* Respects FOV radius for target selection
+* Respects StickyAim (locks onto same target)
+* Respects Prediction X/Y when prediction is enabled
+* Respects session whitelist (WhitelistedPlayers)
+- Silent aim fires instantly (no smoothness delay) on bow release
+- Falls back to real mouse if no target in FOV
+
+v6.2: Bow Silent Aim (initial)
+
+- Added Bow Silent Aim toggle in Aim Assist tab
+- Hooked ClientControl to intercept server aim position
+
+v6.1: UI Improvements
+
+- Added "Clear Console" button with Velocity executor support
+- Fixed UI keybind (no longer conflicts with LeftControl)
+- Increased chat logger capacity to 100 messages
+
+v6: Whitelist System (ID-Based)
+
+- Removed key system entirely
+- Now uses simple user ID whitelist check
+
+Previous updates:
+- Manual number input for all sliders
+- Chat Logger tab
+- Customize tab with notifications, UI keybind, profile info
+- Fluent UI implementation
+- Rainbow LED circle animation
+- 3D reach indicator at feet
+- Sword-based reach (no fling!)
+- Aim assist with prediction
+- Auto clicker
+- Player targeting & whitelist
+]]
+
+Tabs.Changelog:AddParagraph({
+Title = "Changelog - Current Version: v6.3",
+Content = changelogText
+})
+
+-- ============================================================
+-- [[ RAKNET DESYNC ]] – replaces the old velocity‑based method
+-- ============================================================
+local RakNetHookAdded = false
+local function SetupRakNetDesync()
+if RakNetHookAdded then return end
+if not raknet or not raknet.add_send_hook then
+print("RakNet not available – Desync will be inactive.")
+-- Optionally disable the toggle so the user knows
+if ToggleDesync then
+pcall(function() ToggleDesync:SetValue(false) end)
+DesyncActive = false
+end
+return
+end
+raknet.add_send_hook(function(packet)
+if DesyncActive and packet.PacketId == 0x1B then
+local buf = packet.AsBuffer
+-- Corrupt the movement data by writing 0xFFFFFFFF at offset 1
+buffer.writeu32(buf, 1, 0xFFFFFFFF)
+packet:SetData(buf)
+end
+end)
+RakNetHookAdded = true
+print("RakNet desync hook installed.")
+end
+
+-- Call this once after everything is set up
+SetupRakNetDesync()
